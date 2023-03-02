@@ -183,8 +183,11 @@ async def on_message(message):
     if query == "":
         return
 
+    print(f"Query Key: {message_history_key}")
+
     if message_history_key not in message_history:
         message_history[message_history_key] = []
+
     message_history[message_history_key].append(
         {"role": "user", "content": f"<{user_name}>{query}"})
     abridge_history(message_history_key)
