@@ -2,6 +2,7 @@
 
 import os
 import openai
+import tiktoken
 import discord
 import asyncio
 from datetime import datetime
@@ -68,42 +69,6 @@ prompt_messages = [
         "content": "Sure. Did you know that a day on Venus is longer than a year on Venus? Venus takes about 243 Earth days to complete one rotation on its axis, but only takes about 225 Earth days to orbit the sun. This means that a day (one rotation) on Venus is actually longer than a year (one orbit) on Venus."},
     {"role": "user", "content": "<M1kee>That's crazy."},
     {"role": "assistant", "content": "I know, right? The universe is an amazing place."},
-    {"role": "user", "content": "<M1kee>I got a random idea for you to try! Write dialogue in the style of Quentin Tarantino for a scene where Samuel L. Jackson meets a cat made from ASCII art named Artie. Samuel L. Jackson has been trying to get a recourse loan from the bank, but has been having trouble."},
-    {"role": "assistant", "content": """That is quite random, M1kee. I love it. Let's see what I can do.
-
-INT. BANK - DAY
-
-SAMUEL L. JACKSON (playing himself) is walking down the street when he sees ARTIE the ASCII CAT sitting on a windowsill.
-
-JACKSON: (to himself) What the...? Is that a motherfuckin' cat made outta ASCII characters?
-
-ARTIE: Meow.
-
-JACKSON: (surprised) Holy shit, you can talk too? That's some crazy-ass shit right there.
-
-ARTIE: Meow.
-
-JACKSON: Alright, alright, calm down. So what's your name, little guy?
-
-ARTIE: Meow.
-
-JACKSON: Artie, huh? I like it. You're one cool cat, Artie.
-
-ARTIE: Meow.
-
-JACKSON: Say...you wouldn't happen to know anything about getting a recourse loan from the bank, would you?
-
-ARTIE: Meow?
-
-JACKSON: Yeah, a recourse loan. I'm trying to get my finances in order and shit.
-
-ARTIE: Meow!
-
-JACKSON: Damn straight! Let's go kick some ass at the bank!
-
-Jackson picks up Artie and heads towards the bank with a new sense of purpose."""},
-    {"role": "user", "content": "<M1kee>lol. nailed it."},
-    {"role": "assistant", "content": "Awww shucks. Thanks M1kee!"},
     {"role": "user", "content": "<M1kee>Can you introduce yourself again?"},
     {"role": "assistant", "content": introduction}
 ]
@@ -129,22 +94,68 @@ async def on_ready():
             await channel.send(introduction)
 
 
+model = 'gpt-3.5-turbo-0301'
+print(f"Using model: {model}")
+
+def get_num_tokens(messages):
+    try:
+        encoding = tiktoken.encoding_for_model(model)
+    except KeyError:
+        encoding = tiktoken.get_encoding("cl100k_base")
+
+    if model == 'gpt-3.5-turbo-0301':
+        num_tokens = 0
+
+        for message in messages:
+            num_tokens += 4
+            for key, value in message.items():
+                num_tokens += len(encoding.encode(value))
+                if key == 'name':
+                    num_tokens += -1
+        num_tokens += 2
+
+        return num_tokens
+    else:
+        raise NotImplementedError(
+            f"Token estimation is not yet implemented for this model ({model}). Please visit the OpenAI tiktoken documentation to learn more.")
+
+
+init_token_count = get_num_tokens(prompt_messages)
+max_output_token_count = 640
+max_input_token_count = 4096 - max_output_token_count - 1
+max_history_token_count = max_input_token_count - init_token_count
+
+if max_history_token_count < 32:
+    raise ValueError(
+        f"Max history token count ({max_history_token_count}) is too low. Must be at least 32. Please reduce the number of prompt messages or decrease the max output token count.")
+
+print(f"Prompt Tokens: {init_token_count}")
+print(f"Max Output Tokens: {max_output_token_count}")
+print(f"Max Input Tokens: {max_input_token_count}")
+print(f"Max History Tokens: {max_history_token_count}")
+
 message_history = {}
-max_history = 1000
 
 
 def abridge_history(message_history_key):
     global message_history
 
-    token_usage_estimate = len(' '.join(
-        [x['content'] for x in message_history[message_history_key]]).split(' '))
+    history_token_count = get_num_tokens(message_history[message_history_key])
+    print(f"History Tokens: {history_token_count}")
 
-    print(f"Token usage estimate: {token_usage_estimate}")
-
-    while token_usage_estimate > max_history and len(message_history[message_history_key]) > 1:
+    if history_token_count > max_history_token_count:
+        print("History Token Count is Greater than Max History Tokens. Abridging history...")
+    
+    removed_count = 0
+    while history_token_count > max_history_token_count and len(message_history[message_history_key]) > 1:
         message_history[message_history_key].pop(0)
-        token_usage_estimate = len(' '.join(
-            [x['content'] for x in message_history[message_history_key]]).split(' '))
+        history_token_count = get_num_tokens(
+            message_history[message_history_key])
+        removed_count += 1
+    
+    if removed_count > 0:
+        print(f"Removed {removed_count} messages from history.")
+        print(f"History Tokens: {history_token_count}")
 
 
 dm_whitelist = ["Munkyfoot#7944"]
@@ -153,7 +164,7 @@ asleep = False
 
 @client.event
 async def on_message(message):
-    global message_history, asleep, dm_whitelist
+    global message_history, asleep
     """Responds to a message with a random response from the GPT-3 API."""
     if message.author == client.user:
         return
@@ -224,10 +235,10 @@ async def on_message(message):
             try:
                 attempts += 1
                 response = openai.ChatCompletion.create(
-                    model="gpt-3.5-turbo",
+                    model=model,
                     messages=messages,
                     temperature=0.7,
-                    max_tokens=512,
+                    max_tokens=max_output_token_count,
                     top_p=1,
                     frequency_penalty=0.4,
                     presence_penalty=0.6,
