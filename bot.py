@@ -25,9 +25,23 @@ class BotGPT:
         self.max_history_token_count = self.max_input_token_count - self.init_token_count
 
         self.message_history = {}
+        self.sleeping = {}
 
         self.dm_whitelist = ["Munkyfoot#7944"]
-        self.asleep = False
+        self.commands = {
+            "help": {
+                "description": "Displays this help message.",
+            },
+            "forget": {
+                "description": "Forgets all messages in the current channel.",
+            },
+            "sleep": {
+                "description": "Puts Randy to sleep in the current channel.",
+            },
+            "wake": {
+                "description": "Wakes Randy up in the current channel.",
+            },
+        }
 
         self.introduce_on_join = False
         self.introduction = """I'm back again, humans! Randy the Random Robot has returned with further upgrades to enhance your experience on this discord server. Thanks to the latest improvements, I'm now powered by the same sauce that ChatGPT uses, enabling me to generate more diverse and sophisticated responses.
@@ -113,9 +127,9 @@ While I strive to provide accurate and appropriate responses, please bear in min
             raise NotImplementedError(
                 f"Token estimation is not yet implemented for this model ({self.model}). Please visit the OpenAI tiktoken documentation to learn more.")
 
-    def abridge_history(self, message_history_key):
+    def abridge_history(self, channel_key):
         history_token_count = self.get_num_tokens(
-            self.message_history[message_history_key])
+            self.message_history[channel_key])
         print(f"History Tokens: {history_token_count}")
 
         if history_token_count > self.max_history_token_count:
@@ -123,10 +137,10 @@ While I strive to provide accurate and appropriate responses, please bear in min
                 "History Token Count is Greater than Max History Tokens. Abridging history...")
 
         removed_count = 0
-        while history_token_count > self.max_history_token_count and len(self.message_history[message_history_key]) > 1:
-            self.message_history[message_history_key].pop(0)
+        while history_token_count > self.max_history_token_count and len(self.message_history[channel_key]) > 1:
+            self.message_history[channel_key].pop(0)
             history_token_count = self.get_num_tokens(
-                self.message_history[message_history_key])
+                self.message_history[channel_key])
             removed_count += 1
 
         if removed_count > 0:
@@ -171,17 +185,17 @@ While I strive to provide accurate and appropriate responses, please bear in min
             return
 
         user_name, user_id = str(message.author).split("#")
-        message_history_key = "default"
+        channel_key = "default"
 
         # Check if message channel is a DM
         if message.channel.type == discord.ChannelType.private:
             if str(message.author) in self.dm_whitelist:
-                message_history_key = f"user-{user_name}#{user_id}"
+                channel_key = f"user-{user_name}#{user_id}"
             else:
                 await message.channel.send("Hey! I can't respond to DMs. Talk to me in a server instead.")
                 return
         elif message.channel.name == "random":
-            message_history_key = f"guild-{message.guild.id}#{message.channel.name}"
+            channel_key = f"guild-{message.guild.id}#{message.channel.name}"
         else:
             if "randy" in message.content.lower():
                 await message.channel.send("Hey! I can't respond in this channel. Talk to me in the #random channel instead.")
@@ -195,28 +209,51 @@ While I strive to provide accurate and appropriate responses, please bear in min
         if query == "":
             return
 
-        print(f"Query Key: {message_history_key}")
+        print(f"Query Key: {channel_key}")
 
-        if message_history_key not in self.message_history:
-            self.message_history[message_history_key] = []
+        if query[:6].lower() == "!randy":
+            if len(query) > 6:
+                _, command, *rest = query.split(" ")
+            else:
+                command = "help"
 
-        self.message_history[message_history_key].append(
-            {"role": "user", "content": f"<{user_name}>{query}"})
-        self.abridge_history(message_history_key)
-
-        if "randy" in message.content.lower():
-            if self.asleep:
-                await self.client.change_presence(status=discord.Status.online)
-                self.asleep = False
-                print("Waking up...")
-        elif self.asleep:
+            if command in self.commands:
+                if command == "help":
+                    command_separator = "\n\t• "
+                    help_text = f"{command_separator}".join([f"**{command}** - {self.commands[command]['description']}" for command in self.commands])
+                    command_message = f"Here are some special commands I can respond to. Remember that you need to type !randy before a special command to make sure I respond correctly.{command_separator}{help_text}"
+                    await message.channel.send(command_message)
+                elif command == "forget":
+                    if channel_key in self.message_history:
+                        self.message_history[channel_key] = []
+                        await message.channel.send("I've forgotten everything you've said to me.")
+                    else:
+                        await message.channel.send("I don't remember anything you've said to me.")
+                elif command == "sleep":
+                    self.sleeping[channel_key] = True
+                    await message.channel.send("Zzz...")
+                elif command == "wake":
+                    self.sleeping[channel_key] = False
+                    await message.channel.send("I'm awake!")
+            
             return
 
-        if "go to sleep" in message.content.lower():
-            await message.channel.send("Zzz...")
-            await self.client.change_presence(status=discord.Status.idle)
-            self.asleep = True
-            print("Going to sleep...")
+        if channel_key not in self.message_history:
+            self.message_history[channel_key] = []
+
+        self.message_history[channel_key].append(
+            {"role": "user", "content": f"<{user_name}>{query}"})
+        self.abridge_history(channel_key)
+
+        if "randy" in message.content.lower():
+            if channel_key not in self.sleeping:
+                self.sleeping[channel_key] = False
+
+            if self.sleeping[channel_key]:
+                self.sleeping[channel_key] = False
+                print("Waking up...")
+        elif self.sleeping[channel_key]:
+            print("Still sleeping...")
             return
 
         print("Responding to message...")
@@ -224,7 +261,7 @@ While I strive to provide accurate and appropriate responses, please bear in min
         text = ""
 
         messages = self.prompt_messages + \
-            self.message_history[message_history_key]
+            self.message_history[channel_key]
 
         usage_message = ""
 
@@ -262,7 +299,7 @@ While I strive to provide accurate and appropriate responses, please bear in min
             if text == "":
                 text = "I'm sorry, I'm having trouble connecting to the API right now. Please try again later."
 
-            self.message_history[message_history_key].append(
+            self.message_history[channel_key].append(
                 {"role": "assistant", "content": text})
 
         if len(text) > 2000:
