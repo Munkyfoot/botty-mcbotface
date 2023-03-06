@@ -273,6 +273,8 @@ While I strive to provide accurate and appropriate responses, please bear in min
                             await message.channel.send(f"Sorry, I couldn't find any results for \"{search_query}\".")
                     else:
                         await message.channel.send("You need to include a search query.")
+            else:
+                await message.channel.send("Sorry, I don't know that command. Try `!randy help` to see a list of commands I can respond to.")
 
             if is_blocking:
                 return
