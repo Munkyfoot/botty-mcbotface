@@ -6,6 +6,7 @@ import tiktoken
 import discord
 import asyncio
 from datetime import datetime, timedelta
+from utils import WikiAPI
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,11 +18,14 @@ class BotGPT:
         self.intents.message_content = True
         self.client = discord.Client(intents=self.intents)
 
+        self.wiki = WikiAPI()
+
         openai.api_key = os.getenv("OPENAI_API_KEY")
         self.model = 'gpt-3.5-turbo-0301'
         self.init_token_count = 0
         self.max_output_token_count = 640
-        self.max_input_token_count = 4096 - self.max_output_token_count - 1 + (32) # 32 = Hacky buffer for system time message
+        self.max_input_token_count = 4096 - self.max_output_token_count - \
+            1 + (32)  # 32 = Hacky buffer for system time message
         self.max_history_token_count = self.max_input_token_count - self.init_token_count
 
         self.message_history = {}
@@ -41,6 +45,9 @@ class BotGPT:
             "wake": {
                 "description": "Wakes Randy up in the current channel.",
             },
+            "search": {
+                "description": "Searches Wikipedia for something. Usage: `!randy search <query>`",
+            }
         }
 
         self.introduce_on_join = False
@@ -101,6 +108,8 @@ While I strive to provide accurate and appropriate responses, please bear in min
             {"role": "user", "content": "<M1kee>That's crazy."},
             {"role": "assistant",
                 "content": "I know, right? The universe is an amazing place."},
+            {"role": "user", "content": "<M1kee>Do you have any special commands that I can use?"},
+            {"role": "assistant", "content": "I sure do! Just type !randy to see a list of all the commands I support."},
             {"role": "user", "content": "<M1kee>What are the most popular games right now?"},
             {"role": "assistant", "content": "Unfortunately, my most recent data is from September 1, 2021 so I don't know what's popular right now."},
             {"role": "user", "content": "<M1kee>No worries. Someone else just joined. Can you introduce yourself again?"},
@@ -219,11 +228,13 @@ While I strive to provide accurate and appropriate responses, please bear in min
             else:
                 command = "help"
 
+            is_blocking = True
+
             if command in self.commands:
                 if command == "help":
                     command_separator = "\n\t• "
                     help_text = f"{command_separator}".join(
-                        [f"**{command}** - {self.commands[command]['description']}" for command in self.commands])
+                        [f"!randy **{command}** - {self.commands[command]['description']}" for command in self.commands])
                     command_message = f"Here are some special commands I can respond to. Remember that you need to type !randy before a special command to make sure I respond correctly.{command_separator}{help_text}"
                     await message.channel.send(command_message)
                 elif command == "forget":
@@ -238,8 +249,31 @@ While I strive to provide accurate and appropriate responses, please bear in min
                 elif command == "wake":
                     self.sleeping[channel_key] = False
                     await message.channel.send("I'm awake!")
+                elif command == "search":
+                    if len(rest) > 0:
+                        search_query = " ".join(rest)
+                        try:
+                            search_results = self.wiki.search(
+                                search_query, 1)['pages']
+                        except:
+                            search_results = []
 
-            return
+                        if len(search_results) > 0:
+                            try:
+                                page = self.wiki.get_page(
+                                    search_results[0]['key'])
+                                query = f"Read the following article and summarize:\n\n{search_results[0]['title']}.\n\n{page.summary}"
+                                is_blocking = False
+                                await message.channel.send(f"Found something! An article titled \"{search_results[0]['title']}: {search_results[0]['description']}\". Reading it now...")
+                            except:
+                                await message.channel.send(f"Sorry, I couldn't find any results for \"{search_query}\".")
+                        else:
+                            await message.channel.send(f"Sorry, I couldn't find any results for \"{search_query}\".")
+                    else:
+                        await message.channel.send("You need to include a search query.")
+
+            if is_blocking:
+                return
 
         if channel_key not in self.message_history:
             self.message_history[channel_key] = []
@@ -263,7 +297,8 @@ While I strive to provide accurate and appropriate responses, please bear in min
 
         text = ""
 
-        time_message = {"role": "system", "content": f"The current date/time is {(message.created_at + timedelta(hours=-8)).strftime('%I:%M %p on %B %d, %Y')}. The local timezone is US/Pacific."}
+        time_message = {
+            "role": "system", "content": f"The current date/time is {(message.created_at + timedelta(hours=-8)).strftime('%I:%M %p on %B %d, %Y')}. The local timezone is US/Pacific."}
         print(f"Time Message: {time_message}")
 
         messages = self.prompt_messages + \
