@@ -11,6 +11,7 @@ load_dotenv()
 class WikiAPI:
     def __init__(self):
         self.base_url = "https://api.wikimedia.org/core/v1/wikipedia/"
+        self.view_base_url = "https://en.wikipedia.org/wiki/"
         self.lang = "en"
         self.headers = {
             # 'Authorization': f"Bearer {os.getenv('ACCESS_TOKEN')}",
@@ -100,3 +101,6 @@ class WikiAPI:
         else:
             print("Page not found.")
             return None
+
+    def get_view_url(self, key: str) -> str:
+        return self.view_base_url + key

@@ -161,6 +161,7 @@ While I strive to provide accurate and appropriate responses, please bear in min
     def setup(self):
         """Sets the initial parameters."""
         self.init_token_count = self.get_num_tokens(self.prompt_messages)
+        self.max_history_token_count = self.max_input_token_count - self.init_token_count
 
         if self.max_history_token_count < 32:
             raise ValueError(
@@ -225,6 +226,7 @@ While I strive to provide accurate and appropriate responses, please bear in min
         if query[:6].lower() == "!randy":
             if len(query) > 6:
                 _, command, *rest = query.split(" ")
+                command = command.lower()
             else:
                 command = "help"
 
@@ -264,7 +266,7 @@ While I strive to provide accurate and appropriate responses, please bear in min
                                     search_results[0]['key'])
                                 query = f"Read the following article and summarize:\n\n{search_results[0]['title']}.\n\n{page.summary}"
                                 is_blocking = False
-                                await message.channel.send(f"Found something! An article titled \"{search_results[0]['title']}: {search_results[0]['description']}\". Reading it now...")
+                                await message.channel.send(f"Found something! An article titled \"{search_results[0]['title']}\". Reading it now...\n{self.wiki.get_view_url(search_results[0]['key'])}")
                             except:
                                 await message.channel.send(f"Sorry, I couldn't find any results for \"{search_query}\".")
                         else:
