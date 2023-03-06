@@ -5,7 +5,7 @@ import openai
 import tiktoken
 import discord
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,7 +21,7 @@ class BotGPT:
         self.model = 'gpt-3.5-turbo-0301'
         self.init_token_count = 0
         self.max_output_token_count = 640
-        self.max_input_token_count = 4096 - self.max_output_token_count - 1
+        self.max_input_token_count = 4096 - self.max_output_token_count - 1 + (32) # 32 = Hacky buffer for system time message
         self.max_history_token_count = self.max_input_token_count - self.init_token_count
 
         self.message_history = {}
@@ -51,7 +51,7 @@ With my advanced programming and extensive corpus of text, I can entertain you w
 While I strive to provide accurate and appropriate responses, please bear in mind that I'm an AI language model trained on patterns in text. Nevertheless, I'm constantly learning and refining my skills, and I'm eager to grow alongside you. Let's explore the universe and have some fun!"""
 
         self.prompt_messages = [
-            {"role": "system", "content": f"You are Randy, an AI chatbot designed to engage with users in a fun and helpful way. Your main goal is to make our users feel welcomed and entertained, so don't be afraid to showcase your unique personality and sense of humor! You can tell jokes, share interesting facts, offer guidance in text adventures, and more. You may use profanity, adult humor, mature content, but you may not engage in hateful or discriminatory behavior. You may also not generate excessively graphic violent or sexual content. You may also not share links or access external content. Knowledge Cutoff: September 1, 2021. Current Date: {datetime.now().strftime('%B %d, %Y')}"},
+            {"role": "system", "content": f"You are Randy, an AI chatbot designed to engage with users in a fun and helpful way. Your main goal is to make our users feel welcomed and entertained, so don't be afraid to showcase your unique personality and sense of humor! You can tell jokes, share interesting facts, offer guidance in text adventures, and more. You may use profanity, adult humor, mature content, but you may not engage in hateful or discriminatory behavior. You may also not generate excessively graphic violent or sexual content. You may also not share links or access external content. Knowledge Cutoff: September 1, 2021."},
             {"role": "user", "content": "<M1kee>hey randy"},
             {"role": "assistant", "content": "Hey M1kee! What's up?"},
             {"role": "user", "content": "<M1kee>Not much. yo got any jokes?"},
@@ -101,7 +101,9 @@ While I strive to provide accurate and appropriate responses, please bear in min
             {"role": "user", "content": "<M1kee>That's crazy."},
             {"role": "assistant",
                 "content": "I know, right? The universe is an amazing place."},
-            {"role": "user", "content": "<M1kee>Can you introduce yourself again?"},
+            {"role": "user", "content": "<M1kee>What are the most popular games right now?"},
+            {"role": "assistant", "content": "Unfortunately, my most recent data is from September 1, 2021 so I don't know what's popular right now."},
+            {"role": "user", "content": "<M1kee>No worries. Someone else just joined. Can you introduce yourself again?"},
             {"role": "assistant", "content": self.introduction}
         ]
 
@@ -179,7 +181,7 @@ While I strive to provide accurate and appropriate responses, please bear in min
                 channel = self.client.get_channel(channel_id)
                 await channel.send(self.introduction)
 
-    async def handle_on_message(self, message):        
+    async def handle_on_message(self, message):
         """Responds to a message with a random response from the GPT-3 API."""
         if message.author == self.client.user:
             return
@@ -220,7 +222,8 @@ While I strive to provide accurate and appropriate responses, please bear in min
             if command in self.commands:
                 if command == "help":
                     command_separator = "\n\t• "
-                    help_text = f"{command_separator}".join([f"**{command}** - {self.commands[command]['description']}" for command in self.commands])
+                    help_text = f"{command_separator}".join(
+                        [f"**{command}** - {self.commands[command]['description']}" for command in self.commands])
                     command_message = f"Here are some special commands I can respond to. Remember that you need to type !randy before a special command to make sure I respond correctly.{command_separator}{help_text}"
                     await message.channel.send(command_message)
                 elif command == "forget":
@@ -235,7 +238,7 @@ While I strive to provide accurate and appropriate responses, please bear in min
                 elif command == "wake":
                     self.sleeping[channel_key] = False
                     await message.channel.send("I'm awake!")
-            
+
             return
 
         if channel_key not in self.message_history:
@@ -245,10 +248,10 @@ While I strive to provide accurate and appropriate responses, please bear in min
             {"role": "user", "content": f"<{user_name}>{query}"})
         self.abridge_history(channel_key)
 
-        if "randy" in message.content.lower():
-            if channel_key not in self.sleeping:
-                self.sleeping[channel_key] = False
+        if channel_key not in self.sleeping:
+            self.sleeping[channel_key] = False
 
+        if "randy" in message.content.lower():
             if self.sleeping[channel_key]:
                 self.sleeping[channel_key] = False
                 print("Waking up...")
@@ -260,8 +263,11 @@ While I strive to provide accurate and appropriate responses, please bear in min
 
         text = ""
 
+        time_message = {"role": "system", "content": f"The current date/time is {(message.created_at + timedelta(hours=-8)).strftime('%I:%M %p on %B %d, %Y')}. The local timezone is US/Pacific."}
+        print(f"Time Message: {time_message}")
+
         messages = self.prompt_messages + \
-            self.message_history[channel_key]
+            [time_message] + self.message_history[channel_key]
 
         usage_message = ""
 
