@@ -287,38 +287,42 @@ While I strive to provide accurate and appropriate responses, please bear in min
                     else:
                         await message.channel.send("You need to include a search query.")
                 elif command == "read":
-                    if len(rest) > 0:
-                        try:
-                            result_index = int(rest[0]) - 1
-                        except:
-                            await message.channel.send("You need to include a valid search result number.")
-                            return
+                    if channel_key not in self.search_results:
+                        self.search_results[channel_key] = []
 
-                        if channel_key in self.search_results:
+                    if len(self.search_results[channel_key]) > 0:
+                        if len(rest) > 0:
+                            try:
+                                result_index = int(rest[0]) - 1
+
+                                if result_index < 0 or result_index >= len(self.search_results[channel_key]):
+                                    raise Exception("Invalid search result number.")
+                            except:
+                                await message.channel.send("It looks like you didn't enter a valid search result number. Please try again.")
+                                return
+
+                            
                             search_results = self.search_results[channel_key]
-                            if result_index < len(search_results):
-                                result_key = search_results[result_index]
-                                try:
-                                    print(f"Search result found. Result Key: {result_key}. Attempting to get the page...")
-                                    page = self.wiki.get_page(result_key)
-                                    #print(page.summary)
-                                    query = f"Read #{result_index + 1} - {page.title}.\n\n{page.summary}\n\n---\n\nHow would you summarize this?"
-                                    #for section in page.sections:
-                                    #    query += f"\n\n{section.title}: {section.text}"
-                                    is_blocking = False
-                                    print("Page found and query message created.")
+                            result_key = search_results[result_index]
+                            try:
+                                print(f"Search result found. Result Key: {result_key}. Attempting to get the page...")
+                                page = self.wiki.get_page(result_key)
+                                #print(page.summary)
+                                query = f"Read #{result_index + 1} - {page.title}.\n\n{page.summary}\n\n---\n\nHow would you summarize this?"
+                                #for section in page.sections:
+                                #    query += f"\n\n{section.title}: {section.text}"
+                                is_blocking = False
+                                print("Page found and query message created.")
 
-                                    search_results_message = f"Now reading \"{page.title}\"... ({self.wiki.get_view_url(result_key)})"
-                                    await message.channel.send(search_results_message)
-                                except Exception as e:
-                                    print(f"Experienced an error while getting the page: {e}")
-                                    await message.channel.send("Something went wrong while getting the page. Please try again later.")
-                            else:
-                                await message.channel.send("That's not a valid search result number.")
+                                search_results_message = f"Now reading \"{page.title}\"... ({self.wiki.get_view_url(result_key)})"
+                                await message.channel.send(search_results_message)
+                            except Exception as e:
+                                print(f"Experienced an error while getting the page: {e}")
+                                await message.channel.send("Something went wrong while getting the page. Please try again later.")                        
                         else:
-                            await message.channel.send("You need to search for something first.")
+                            await message.channel.send("You need to include a search result number.")
                     else:
-                        await message.channel.send("You need to include a search result number.")
+                            await message.channel.send("You need to search for something first.")
             else:
                 await message.channel.send("Sorry, I don't know that command. Try `!randy help` to see a list of commands I can respond to.")
 
