@@ -17,7 +17,7 @@ class WikiAPI:
             # 'Authorization': f"Bearer {os.getenv('ACCESS_TOKEN')}",
             'User-Agent': 'Randy the Random Robot (mtlsoftworks@gmail.com)'
         }
-        self.wiki = wikipediaapi.Wikipedia(self.lang)
+        self.wiki = wikipediaapi.Wikipedia(self.lang, headers=self.headers)
 
     def search(self, query: str, limit: int = 10) -> dict:
         """Search for a page."""

@@ -30,6 +30,7 @@ class BotGPT:
 
         self.message_history = {}
         self.sleeping = {}
+        self.search_results = {}
 
         self.dm_whitelist = ["Munkyfoot#7944"]
         self.commands = {
@@ -37,7 +38,7 @@ class BotGPT:
                 "description": "Displays this help message.",
             },
             "forget": {
-                "description": "Forgets all messages in the current channel.",
+                "description": "Forgets all messages and search history in the current channel.",
             },
             "sleep": {
                 "description": "Puts Randy to sleep in the current channel.",
@@ -47,7 +48,10 @@ class BotGPT:
             },
             "search": {
                 "description": "Searches Wikipedia for something. Usage: `!randy search <query>`",
-            }
+            },
+            "read": {
+                "description": "Reads the specified article number. Must run the search command first. Usage: `!randy read <number>`",
+            },
         }
 
         self.introduce_on_join = False
@@ -233,6 +237,7 @@ While I strive to provide accurate and appropriate responses, please bear in min
             is_blocking = True
 
             if command in self.commands:
+                print(f"Received command: {command}")
                 if command == "help":
                     command_separator = "\n\t• "
                     help_text = f"{command_separator}".join(
@@ -240,11 +245,10 @@ While I strive to provide accurate and appropriate responses, please bear in min
                     command_message = f"Here are some special commands I can respond to. Remember that you need to type !randy before a special command to make sure I respond correctly.{command_separator}{help_text}"
                     await message.channel.send(command_message)
                 elif command == "forget":
-                    if channel_key in self.message_history:
-                        self.message_history[channel_key] = []
-                        await message.channel.send("I've forgotten everything you've said to me.")
-                    else:
-                        await message.channel.send("I don't remember anything you've said to me.")
+                    self.message_history[channel_key] = []
+                    self.search_results[channel_key] = []
+
+                    await message.channel.send("I've forgotten everything you've said to me.")
                 elif command == "sleep":
                     self.sleeping[channel_key] = True
                     await message.channel.send("Zzz...")
@@ -255,24 +259,66 @@ While I strive to provide accurate and appropriate responses, please bear in min
                     if len(rest) > 0:
                         search_query = " ".join(rest)
                         try:
+                            print(f"Searching for \"{search_query}\"...")
                             search_results = self.wiki.search(
-                                search_query, 1)['pages']
-                        except:
+                                search_query, 5)['pages']
+                        except Exception as e:
+                            print(f"Experienced an error while searching for \"{search_query}\": {e}")
                             search_results = []
 
                         if len(search_results) > 0:
                             try:
-                                page = self.wiki.get_page(
-                                    search_results[0]['key'])
-                                query = f"Read the following article and summarize:\n\n{search_results[0]['title']}.\n\n{page.summary}"
-                                is_blocking = False
-                                await message.channel.send(f"Found something! An article titled \"{search_results[0]['title']}\". Reading it now...\n{self.wiki.get_view_url(search_results[0]['key'])}")
-                            except:
-                                await message.channel.send(f"Sorry, I couldn't find any results for \"{search_query}\".")
+                                self.search_results[channel_key] = [result['key'] for result in search_results]
+                                search_results_message = f"Here are the top {len(search_results)} results for \"{search_query}\". Tell me which one to read by typing `!randy read <number>`\n"
+                                for i, result in enumerate(search_results):
+                                    search_results_message += f"\n\t{i+1}. {result['title']}: {result['description']}"
+                                
+                                if channel_key not in self.message_history:
+                                    self.message_history[channel_key] = []
+
+                                self.message_history[channel_key].append({"role": "assistant", "content": search_results_message})
+                                await message.channel.send(search_results_message)
+                            except Exception as e:
+                                print(f"Experienced an error while sending search results for \"{search_query}\": {e}")
+                                await message.channel.send(f"Something went wrong while searching for \"{search_query}\". Please try again later.")
                         else:
+                            print("No search results found.")
                             await message.channel.send(f"Sorry, I couldn't find any results for \"{search_query}\".")
                     else:
                         await message.channel.send("You need to include a search query.")
+                elif command == "read":
+                    if len(rest) > 0:
+                        try:
+                            result_index = int(rest[0]) - 1
+                        except:
+                            await message.channel.send("You need to include a valid search result number.")
+                            return
+
+                        if channel_key in self.search_results:
+                            search_results = self.search_results[channel_key]
+                            if result_index < len(search_results):
+                                result_key = search_results[result_index]
+                                try:
+                                    print(f"Search result found. Result Key: {result_key}. Attempting to get the page...")
+                                    page = self.wiki.get_page(result_key)
+                                    #print(page.summary)
+                                    query = f"Read #{result_index + 1} - {page.title}.\n\n{page.summary}\n\n---\n\nHow would you summarize this?"
+                                    #for section in page.sections:
+                                    #    query += f"\n\n{section.title}: {section.text}"
+                                    is_blocking = False
+                                    print("Page found and query message created.")
+
+                                    search_results_message = f"Now reading \"{page.title}\"... ({self.wiki.get_view_url(result_key)})"
+                                    await message.channel.send(search_results_message)
+                                except Exception as e:
+                                    print(f"Experienced an error while getting the page: {e}")
+                                    await message.channel.send("Something went wrong while getting the page. Please try again later.")
+                            else:
+                                await message.channel.send("That's not a valid search result number.")
+                        else:
+                            await message.channel.send("You need to search for something first.")
+                    else:
+                        await message.channel.send("You need to include a search result number.")
             else:
                 await message.channel.send("Sorry, I don't know that command. Try `!randy help` to see a list of commands I can respond to.")
 
