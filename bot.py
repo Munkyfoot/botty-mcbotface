@@ -3,8 +3,9 @@
 import os
 import openai
 import tiktoken
-import discord
 import asyncio
+import discord
+from discord import app_commands
 from datetime import datetime, timedelta
 from utils import WikiAPI
 from dotenv import load_dotenv
@@ -17,6 +18,7 @@ class BotGPT:
         self.intents = discord.Intents.default()
         self.intents.message_content = True
         self.client = discord.Client(intents=self.intents)
+        self.tree = app_commands.CommandTree(self.client)
 
         self.wiki = WikiAPI()
 
@@ -32,26 +34,6 @@ class BotGPT:
         self.search_results = {}
 
         self.dm_whitelist = ["Munkyfoot#7944"]
-        self.commands = {
-            "help": {
-                "description": "Displays this help message.",
-            },
-            "forget": {
-                "description": "Forgets all messages and search history in the current channel.",
-            },
-            "sleep": {
-                "description": "Puts Randy to sleep in the current channel.",
-            },
-            "wake": {
-                "description": "Wakes Randy up in the current channel.",
-            },
-            "search": {
-                "description": "Searches Wikipedia for something. Usage: `!randy search <query>`",
-            },
-            "read": {
-                "description": "Reads the specified article number. Must run the search command first. Usage: `!randy read <number>`",
-            },
-        }
 
         self.introduce_on_join = False
         self.introduction = """I'm back again, humans! Randy the Random Robot has returned with further upgrades to enhance your experience on this discord server. Thanks to the latest improvements, I'm now powered by the same sauce that ChatGPT uses, enabling me to generate more diverse and sophisticated responses.
@@ -112,7 +94,7 @@ While I strive to provide accurate and appropriate responses, please bear in min
             {"role": "assistant",
                 "content": "I know, right? The universe is an amazing place."},
             {"role": "user", "content": "<M1kee>Do you have any special commands that I can use?"},
-            {"role": "assistant", "content": "I sure do! Just type !randy to see a list of all the commands I support."},
+            {"role": "assistant", "content": "I sure do! Interact with me by using Discord's slash commands."},
             {"role": "user", "content": "<M1kee>What are the most popular games right now?"},
             {"role": "assistant", "content": "Unfortunately, my most recent data is from September 1, 2021 so I don't know what's popular right now."},
             {"role": "user", "content": "<M1kee>No worries. Someone else just joined. Can you introduce yourself again?"},
@@ -250,6 +232,152 @@ While I strive to provide accurate and appropriate responses, please bear in min
             print(error_message)
         print("")
 
+    async def sleep(self, interaction: discord.Interaction):
+        try:
+            channel_key = self.get_channel_key(
+                interaction.channel, interaction.user, interaction.guild)
+        except:
+            await interaction.response.send_message("I can't respond in this channel.")
+            return
+        
+        self.sleeping[channel_key] = True
+        await interaction.response.send_message("Zzz...")
+    
+    async def wake(self, interaction: discord.Interaction):
+        try:
+            channel_key = self.get_channel_key(
+                interaction.channel, interaction.user, interaction.guild)
+        except:
+            await interaction.response.send_message("I can't respond in this channel.")
+            return
+        
+        self.sleeping[channel_key] = False
+        await interaction.response.send_message("I'm awake!")
+
+    async def forget(self, interaction: discord.Interaction):
+        try:
+            channel_key = self.get_channel_key(
+                interaction.channel, interaction.user, interaction.guild)
+        except:
+            await interaction.response.send_message("I can't respond in this channel.")
+            return
+
+        self.message_history[channel_key] = []
+        self.search_results[channel_key] = []
+        await interaction.response.send_message("I've forgotten everything.")
+
+    async def read_result(self, interaction: discord.Interaction, result_index: int):
+        try:
+            channel_key = self.get_channel_key(
+                interaction.channel, interaction.user, interaction.guild)
+        except:
+            await interaction.response.send_message("I can't read an article in this channel.")
+            return
+
+        if channel_key not in self.search_results:
+            self.search_results[channel_key] = []
+
+        if len(self.search_results[channel_key]) > 0:
+            if result_index:
+                search_results = self.search_results[channel_key]
+                result_key = search_results[result_index]
+                try:
+                    print(
+                        f"Search result found. Result Key: {result_key}. Attempting to get the page...")
+                    page = self.wiki.get_page(result_key)
+
+                    if channel_key not in self.message_history:
+                        self.message_history[channel_key] = []
+
+                    for section in reversed(page.sections):
+                        if section.title.lower() in ["see also", "references", "external links", "further reading", "notes", "footnotes", "bibliography", "sources"]:
+                            continue
+
+                        if len(self.get_tokens_from_text(section.text)) < self.max_history_token_count // 2 and section.text != "":
+                            self.message_history[channel_key].append(
+                                {"role": "system", "content": f"Here is the {section.title} section of a Wikipedia article about \"{page.title}\":\n\n{section.text}"})
+                        else:
+                            continue
+
+                        for subsection in section.sections:
+                            if len(self.get_tokens_from_text(subsection.text)) < self.max_history_token_count // 2 and subsection.text != "":
+                                self.message_history[channel_key].append(
+                                    {"role": "system", "content": f"Here is the {subsection.title} subsection in the {section.title} section of a Wikipedia article about \"{page.title}\":\n\n{subsection.text}"})
+                            else:
+                                continue
+
+                    self.message_history[channel_key].append(
+                        {"role": "system", "content": f"Here is the summary of a Wikipedia article about \"{page.title}\":\n\n{page.summary}"})
+
+                    self.message_history[channel_key].append(
+                        {"role": "system", "content": f"Ask the user what they want to know about {page.title}. They may request bullet points or a summary, or they may ask questions."})
+                    
+                    self.message_history[channel_key].append(
+                        {"role": "assistant", "content": f"What would you like to know about {page.title}?"}
+                    )
+
+                    await interaction.response.send_message(f"Here's the article: {self.wiki.get_view_url(result_key)}")
+                    await interaction.followup.send("What would you like to know?")
+                except Exception as e:
+                    print(
+                        f"Experienced an error while getting the page: {e}")
+                    await interaction.response.send_message("Something went wrong while getting the page. Please try again later.")
+            else:
+                await interaction.response.send_message("You need to include a search result number.")
+        else:
+            await interaction.response.send_message("You need to search for something first.")
+
+    async def search(self, interaction: discord.Interaction, query: str, limit: int = 5):
+        if len(query) > 0:
+            try:
+                print(f"Searching for \"{query}\"...")
+                search_results = self.wiki.search(
+                    query, limit)['pages']
+            except Exception as e:
+                print(
+                    f"Experienced an error while searching for \"{query}\": {e}")
+                search_results = []
+
+            if len(search_results) > 0:
+                try:
+                    self.search_results[self.get_channel_key(interaction.channel, interaction.user, interaction.guild)] = [
+                        result['key'] for result in search_results]
+                    search_results_message = f"Here are the top {len(search_results)} results for \"{query}\":"
+                    search_results_view = discord.ui.View()
+                    for i, result in enumerate(search_results):
+                        result_label = f"\n\t{i+1}. {result['title']}: {result['description']}"
+                        if len(result_label) > 80:
+                            result_label = result_label[:77] + "..."
+                        result_button = discord.ui.Button(label=result_label, custom_id=str(i))
+                        result_button.callback = lambda ctx, idx=i: self.read_result(ctx, idx)
+
+                        search_results_view.add_item(result_button)
+
+                    await interaction.response.send_message(search_results_message, view=search_results_view)
+                except Exception as e:
+                    print(
+                        f"Experienced an error while sending search results for \"{query}\": {e}")
+                    await interaction.response.send_message(f"Something went wrong while searching for \"{query}\". Please try again later.")
+
+            else:
+                print("No search results found.")
+                await interaction.response.send_message(f"Sorry, I couldn't find any results for \"{query}\".")
+        else:
+            await interaction.response.send_message("You need to include a search query.")
+
+    def get_channel_key(self, channel: discord.TextChannel | discord.DMChannel, author: discord.User | discord.Member, guild: discord.Guild):
+        """Returns a unique key for each channel."""
+        user_name, user_id = str(author).split("#")
+        if channel.type == discord.ChannelType.private:
+            if str(author) in self.dm_whitelist:
+                return f"user-{user_name}#{user_id}"
+            else:
+                return None
+        elif channel.name == "random":
+            return f"guild-{guild.id}#{channel.name}"
+        else:
+            return None
+
     async def handle_on_ready(self):
         print(f"{self.client.user} has connected to Discord!")
 
@@ -271,19 +399,11 @@ While I strive to provide accurate and appropriate responses, please bear in min
         if message.author == self.client.user:
             return
 
+        channel_key = self.get_channel_key(
+            message.channel, message.author, message.guild)
         user_name, user_id = str(message.author).split("#")
-        channel_key = "default"
 
-        # Check if message channel is a DM
-        if message.channel.type == discord.ChannelType.private:
-            if str(message.author) in self.dm_whitelist:
-                channel_key = f"user-{user_name}#{user_id}"
-            else:
-                await message.channel.send("Hey! I can't respond to DMs. Talk to me in a server instead.")
-                return
-        elif message.channel.name == "random":
-            channel_key = f"guild-{message.guild.id}#{message.channel.name}"
-        else:
+        if channel_key is None:
             if "randy" in message.content.lower():
                 await message.channel.send("Hey! I can't respond in this channel. Talk to me in the #random channel instead.")
             return
@@ -297,133 +417,6 @@ While I strive to provide accurate and appropriate responses, please bear in min
             return
 
         print(f"Query Key: {channel_key}")
-
-        if query[:6].lower() == "!randy":
-            if len(query) > 6:
-                _, command, *rest = query.split(" ")
-                command = command.lower()
-            else:
-                command = "help"
-
-            is_blocking = True
-
-            if command in self.commands:
-                print(f"Received command: {command}")
-                if command == "help":
-                    command_separator = "\n\t• "
-                    help_text = f"{command_separator}".join(
-                        [f"!randy **{command}** - {self.commands[command]['description']}" for command in self.commands])
-                    command_message = f"Here are some special commands I can respond to. Remember that you need to type !randy before a special command to make sure I respond correctly.{command_separator}{help_text}"
-                    await message.channel.send(command_message)
-                elif command == "forget":
-                    self.message_history[channel_key] = []
-                    self.search_results[channel_key] = []
-
-                    await message.channel.send("I've forgotten everything you've said to me.")
-                elif command == "sleep":
-                    self.sleeping[channel_key] = True
-                    await message.channel.send("Zzz...")
-                elif command == "wake":
-                    self.sleeping[channel_key] = False
-                    await message.channel.send("I'm awake!")
-                elif command == "search":
-                    if len(rest) > 0:
-                        search_query = " ".join(rest)
-                        try:
-                            print(f"Searching for \"{search_query}\"...")
-                            search_results = self.wiki.search(
-                                search_query, 5)['pages']
-                        except Exception as e:
-                            print(
-                                f"Experienced an error while searching for \"{search_query}\": {e}")
-                            search_results = []
-
-                        if len(search_results) > 0:
-                            try:
-                                self.search_results[channel_key] = [
-                                    result['key'] for result in search_results]
-                                search_results_message = f"Here are the top {len(search_results)} results for \"{search_query}\". Tell me which one to read by typing `!randy read <number>`\n"
-                                for i, result in enumerate(search_results):
-                                    search_results_message += f"\n\t{i+1}. {result['title']}: {result['description']}"
-
-                                await message.channel.send(search_results_message)
-                            except Exception as e:
-                                print(
-                                    f"Experienced an error while sending search results for \"{search_query}\": {e}")
-                                await message.channel.send(f"Something went wrong while searching for \"{search_query}\". Please try again later.")
-                        else:
-                            print("No search results found.")
-                            await message.channel.send(f"Sorry, I couldn't find any results for \"{search_query}\".")
-                    else:
-                        await message.channel.send("You need to include a search query.")
-                elif command == "read":
-                    if channel_key not in self.search_results:
-                        self.search_results[channel_key] = []
-
-                    if len(self.search_results[channel_key]) > 0:
-                        if len(rest) > 0:
-                            try:
-                                result_index = int(rest[0]) - 1
-
-                                if result_index < 0 or result_index >= len(self.search_results[channel_key]):
-                                    raise Exception(
-                                        "Invalid search result number.")
-                            except:
-                                await message.channel.send("It looks like you didn't enter a valid search result number. Please try again.")
-                                return
-
-                            search_results = self.search_results[channel_key]
-                            result_key = search_results[result_index]
-                            try:
-                                print(
-                                    f"Search result found. Result Key: {result_key}. Attempting to get the page...")
-                                page = self.wiki.get_page(result_key)
-
-                                if channel_key not in self.message_history:
-                                    self.message_history[channel_key] = []
-
-                                for section in reversed(page.sections):
-                                    if section.title.lower() in ["see also", "references", "external links", "further reading", "notes", "footnotes", "bibliography", "sources"]:
-                                        continue
-
-                                    if len(self.get_tokens_from_text(section.text)) < self.max_history_token_count // 2 and section.text != "":
-                                        self.message_history[channel_key].append(
-                                            {"role": "system", "content": f"Here is the {section.title} section of a Wikipedia article about \"{page.title}\":\n\n{section.text}"})
-                                    else:
-                                        continue
-
-                                    for subsection in section.sections:
-                                        if len(self.get_tokens_from_text(subsection.text)) < self.max_history_token_count // 2 and subsection.text != "":
-                                            self.message_history[channel_key].append(
-                                                {"role": "system", "content": f"Here is the {subsection.title} subsection in the {section.title} section of a Wikipedia article about \"{page.title}\":\n\n{subsection.text}"})
-                                        else:
-                                            continue
-
-                                self.message_history[channel_key].append(
-                                    {"role": "system", "content": f"Here is the summary of a Wikipedia article about \"{page.title}\":\n\n{page.summary}"})
-
-                                query = f"Tell me what you learned. Begin your response with \"{page.title}...\"."
-
-                                #print(f"History: {self.message_history[channel_key]}")
-
-                                is_blocking = False
-                                print("Page found and query message created.")
-
-                                search_results_message = f"Now reading \"{page.title}\"... ({self.wiki.get_view_url(result_key)})"
-                                await message.channel.send(search_results_message)
-                            except Exception as e:
-                                print(
-                                    f"Experienced an error while getting the page: {e}")
-                                await message.channel.send("Something went wrong while getting the page. Please try again later.")
-                        else:
-                            await message.channel.send("You need to include a search result number.")
-                    else:
-                        await message.channel.send("You need to search for something first.")
-            else:
-                await message.channel.send("Sorry, I don't know that command. Try `!randy help` to see a list of commands I can respond to.")
-
-            if is_blocking:
-                return
 
         if channel_key not in self.message_history:
             self.message_history[channel_key] = []
@@ -458,10 +451,33 @@ if __name__ == "__main__":
 
     @randy.client.event
     async def on_ready():
+        await randy.tree.sync(guild=discord.Object(id=1073806142477713548))
         await randy.handle_on_ready()
 
     @randy.client.event
     async def on_message(message):
+        if message.content.startswith("/"):
+            return
         await randy.handle_on_message(message)
+
+    @randy.tree.command(name='sleep', guild=discord.Object(id=1073806142477713548), description="Puts Randy to sleep.")
+    async def recieve_sleep_command(interaction: discord.Interaction):
+        await randy.sleep(interaction)
+
+    @randy.tree.command(name='wake', guild=discord.Object(id=1073806142477713548), description="Wakes Randy up.")
+    async def recieve_wake_command(interaction: discord.Interaction):
+        await randy.wake(interaction)
+
+    @randy.tree.command(name='forget', guild=discord.Object(id=1073806142477713548), description="Forgets everything.")
+    async def recieve_forget_command(interaction: discord.Interaction):
+        await randy.forget(interaction)
+
+    @randy.tree.command(name='read', guild=discord.Object(id=1073806142477713548), description="Reads a Wikipedia article from search results. Must run the search command first.")
+    async def recieve_read_command(interaction: discord.Interaction, result_index: int):
+        await randy.read_result(interaction, result_index)
+
+    @randy.tree.command(name='search', guild=discord.Object(id=1073806142477713548), description="Searches Wikipedia for a given query and returns the top results up to limit.")
+    async def recieve_search_command(interaction: discord.Interaction, query: str, limit: app_commands.Range[int, 1, 10] = 5):
+        await randy.search(interaction, query, limit)
 
     randy.start()
