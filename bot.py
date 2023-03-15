@@ -462,6 +462,17 @@ if __name__ == "__main__":
             return
         await randy.handle_on_message(message)
 
+    @randy.tree.command(name='help', description="Show available commands.")
+    async def recieve_help_command(interaction: discord.Interaction):
+        help_message = """Here are the available commands:
+`/search [query] [limit]`- Searches Wikipedia for the given query.
+`/read [result index]` - Reads the Wikipedia article at the given index.
+`/forget` - Forgets everything.
+`/sleep` - Puts Randy to sleep.
+`/wake` - Wakes Randy up.
+`/help` - Shows this message."""
+        await interaction.response.send_message(help_message)
+
     @randy.tree.command(name='sleep', description="Puts Randy to sleep.")
     async def recieve_sleep_command(interaction: discord.Interaction):
         await randy.sleep(interaction)
