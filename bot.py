@@ -278,52 +278,54 @@ While I strive to provide accurate and appropriate responses, please bear in min
             self.search_results[channel_key] = []
 
         if len(self.search_results[channel_key]) > 0:
-            if result_index:
-                search_results = self.search_results[channel_key]
-                result_key = search_results[result_index]
-                try:
-                    print(
-                        f"Search result found. Result Key: {result_key}. Attempting to get the page...")
-                    page = self.wiki.get_page(result_key)
+            search_results = self.search_results[channel_key]
 
-                    if channel_key not in self.message_history:
-                        self.message_history[channel_key] = []
+            if result_index < 0 or result_index >= len(search_results):
+                await interaction.response.send_message("I don't have a result with that index.")
+                return
 
-                    for section in reversed(page.sections):
-                        if section.title.lower() in ["see also", "references", "external links", "further reading", "notes", "footnotes", "bibliography", "sources"]:
-                            continue
+            result_key = search_results[result_index]
+            try:
+                print(
+                    f"Search result found. Result Key: {result_key}. Attempting to get the page...")
+                page = self.wiki.get_page(result_key)
 
-                        if len(self.get_tokens_from_text(section.text)) < self.max_history_token_count // 2 and section.text != "":
+                if channel_key not in self.message_history:
+                    self.message_history[channel_key] = []
+
+                for section in reversed(page.sections):
+                    if section.title.lower() in ["see also", "references", "external links", "further reading", "notes", "footnotes", "bibliography", "sources"]:
+                        continue
+
+                    if len(self.get_tokens_from_text(section.text)) < self.max_history_token_count // 2 and section.text != "":
+                        self.message_history[channel_key].append(
+                            {"role": "system", "content": f"Here is the {section.title} section of a Wikipedia article about \"{page.title}\":\n\n{section.text}"})
+                    else:
+                        continue
+
+                    for subsection in section.sections:
+                        if len(self.get_tokens_from_text(subsection.text)) < self.max_history_token_count // 2 and subsection.text != "":
                             self.message_history[channel_key].append(
-                                {"role": "system", "content": f"Here is the {section.title} section of a Wikipedia article about \"{page.title}\":\n\n{section.text}"})
+                                {"role": "system", "content": f"Here is the {subsection.title} subsection in the {section.title} section of a Wikipedia article about \"{page.title}\":\n\n{subsection.text}"})
                         else:
                             continue
 
-                        for subsection in section.sections:
-                            if len(self.get_tokens_from_text(subsection.text)) < self.max_history_token_count // 2 and subsection.text != "":
-                                self.message_history[channel_key].append(
-                                    {"role": "system", "content": f"Here is the {subsection.title} subsection in the {section.title} section of a Wikipedia article about \"{page.title}\":\n\n{subsection.text}"})
-                            else:
-                                continue
+                self.message_history[channel_key].append(
+                    {"role": "system", "content": f"Here is the summary of a Wikipedia article about \"{page.title}\":\n\n{page.summary}"})
 
-                    self.message_history[channel_key].append(
-                        {"role": "system", "content": f"Here is the summary of a Wikipedia article about \"{page.title}\":\n\n{page.summary}"})
+                self.message_history[channel_key].append(
+                    {"role": "system", "content": f"Ask the user what they want to know about {page.title}. They may request bullet points or a summary, or they may ask questions."})
+                
+                self.message_history[channel_key].append(
+                    {"role": "assistant", "content": f"What would you like to know about {page.title}?"}
+                )
 
-                    self.message_history[channel_key].append(
-                        {"role": "system", "content": f"Ask the user what they want to know about {page.title}. They may request bullet points or a summary, or they may ask questions."})
-                    
-                    self.message_history[channel_key].append(
-                        {"role": "assistant", "content": f"What would you like to know about {page.title}?"}
-                    )
-
-                    await interaction.response.send_message(f"Here's the article: {self.wiki.get_view_url(result_key)}")
-                    await interaction.followup.send("What would you like to know?")
-                except Exception as e:
-                    print(
-                        f"Experienced an error while getting the page: {e}")
-                    await interaction.response.send_message("Something went wrong while getting the page. Please try again later.")
-            else:
-                await interaction.response.send_message("You need to include a search result number.")
+                await interaction.response.send_message(f"Here's the article: {self.wiki.get_view_url(result_key)}")
+                await interaction.followup.send("What would you like to know?")
+            except Exception as e:
+                print(
+                    f"Experienced an error while getting the page: {e}")
+                await interaction.response.send_message("Something went wrong while getting the page. Please try again later.")
         else:
             await interaction.response.send_message("You need to search for something first.")
 
@@ -451,7 +453,7 @@ if __name__ == "__main__":
 
     @randy.client.event
     async def on_ready():
-        await randy.tree.sync(guild=discord.Object(id=1073806142477713548))
+        await randy.tree.sync()
         await randy.handle_on_ready()
 
     @randy.client.event
@@ -460,23 +462,23 @@ if __name__ == "__main__":
             return
         await randy.handle_on_message(message)
 
-    @randy.tree.command(name='sleep', guild=discord.Object(id=1073806142477713548), description="Puts Randy to sleep.")
+    @randy.tree.command(name='sleep', description="Puts Randy to sleep.")
     async def recieve_sleep_command(interaction: discord.Interaction):
         await randy.sleep(interaction)
 
-    @randy.tree.command(name='wake', guild=discord.Object(id=1073806142477713548), description="Wakes Randy up.")
+    @randy.tree.command(name='wake', description="Wakes Randy up.")
     async def recieve_wake_command(interaction: discord.Interaction):
         await randy.wake(interaction)
 
-    @randy.tree.command(name='forget', guild=discord.Object(id=1073806142477713548), description="Forgets everything.")
+    @randy.tree.command(name='forget', description="Forgets everything.")
     async def recieve_forget_command(interaction: discord.Interaction):
         await randy.forget(interaction)
 
-    @randy.tree.command(name='read', guild=discord.Object(id=1073806142477713548), description="Reads a Wikipedia article from search results. Must run the search command first.")
+    @randy.tree.command(name='read', description="Reads a Wikipedia article from search results. Must run the search command first.")
     async def recieve_read_command(interaction: discord.Interaction, result_index: int):
-        await randy.read_result(interaction, result_index)
+        await randy.read_result(interaction, result_index - 1)
 
-    @randy.tree.command(name='search', guild=discord.Object(id=1073806142477713548), description="Searches Wikipedia for a given query and returns the top results up to limit.")
+    @randy.tree.command(name='search', description="Searches Wikipedia for a given query and returns the top results up to limit.")
     async def recieve_search_command(interaction: discord.Interaction, query: str, limit: app_commands.Range[int, 1, 10] = 5):
         await randy.search(interaction, query, limit)
 
