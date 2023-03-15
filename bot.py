@@ -171,7 +171,7 @@ While I strive to provide accurate and appropriate responses, please bear in min
     def start(self):
         self.client.run(os.getenv("DISCORD_TOKEN"))
 
-    async def generate_response(self, channel_key, message):
+    async def generate_response(self, channel_key: str, ctx: discord.Interaction | discord.Message):
         """Generates a response to a message using the GPT-3 API."""
 
         messages = self.prompt_messages + self.message_history[channel_key]
@@ -184,7 +184,7 @@ While I strive to provide accurate and appropriate responses, please bear in min
 
         error_message = ""
 
-        async with message.channel.typing():
+        async with ctx.channel.typing():
             while attempts < 3:
                 try:
                     attempts += 1
@@ -221,10 +221,10 @@ While I strive to provide accurate and appropriate responses, please bear in min
             text_chunks = text.split("\n\n")
             first_half = "\n\n".join(text_chunks[:len(text_chunks) // 2])
             second_half = "\n\n".join(text_chunks[len(text_chunks) // 2:])
-            await message.channel.send(first_half)
-            await message.channel.send(second_half)
+            await ctx.channel.send(first_half)
+            await ctx.channel.send(second_half)
         else:
-            await message.channel.send(text)
+            await ctx.channel.send(text)
 
         print(usage_message)
         print(f"Completed in {attempts} attempt(s).")
@@ -310,18 +310,18 @@ While I strive to provide accurate and appropriate responses, please bear in min
                         else:
                             continue
 
+                await interaction.response.send_message(f"Here's the article: {self.wiki.get_view_url(result_key)}")
+                await interaction.followup.send("Reading it now... I'll have a summary of the article in a few seconds!")
+
                 self.message_history[channel_key].append(
                     {"role": "system", "content": f"Here is the summary of a Wikipedia article about \"{page.title}\":\n\n{page.summary}"})
-
-                self.message_history[channel_key].append(
-                    {"role": "system", "content": f"Ask the user what they want to know about {page.title}. They may request bullet points or a summary, or they may ask questions."})
                 
                 self.message_history[channel_key].append(
-                    {"role": "assistant", "content": f"What would you like to know about {page.title}?"}
+                    {"role": "system", "content": f"Please summarize the Wikipedia article you were just provided with. Begin your response with \"{page.title}...\". After your summary, ask the user if they have any questions about the subject of the article."}
                 )
 
-                await interaction.response.send_message(f"Here's the article: {self.wiki.get_view_url(result_key)}")
-                await interaction.followup.send("What would you like to know?")
+                self.abridge_history(channel_key)
+                asyncio.create_task(self.generate_response(channel_key, interaction))                
             except Exception as e:
                 print(
                     f"Experienced an error while getting the page: {e}")
