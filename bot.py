@@ -4,6 +4,7 @@ import os
 import openai
 import tiktoken
 import asyncio
+import functools
 import discord
 from discord import app_commands
 from datetime import datetime, timedelta
@@ -171,6 +172,10 @@ While I strive to provide accurate and appropriate responses, please bear in min
     def start(self):
         self.client.run(os.getenv("DISCORD_TOKEN"))
 
+    async def create_chat_completion(self, *args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, functools.partial(openai.ChatCompletion.create, *args, **kwargs))
+    
     async def generate_response(self, channel_key: str, ctx: discord.Interaction | discord.Message):
         """Generates a response to a message using the GPT-3 API."""
 
@@ -188,7 +193,7 @@ While I strive to provide accurate and appropriate responses, please bear in min
             while attempts < 3:
                 try:
                     attempts += 1
-                    response = openai.ChatCompletion.create(
+                    response = await self.create_chat_completion(
                         model=self.model,
                         messages=messages,
                         temperature=0.7,
