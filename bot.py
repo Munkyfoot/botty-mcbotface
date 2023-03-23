@@ -201,7 +201,8 @@ While I strive to provide accurate and appropriate responses, please bear in min
                         "user": "randy-bot",
                     }
                     
-                    response = openai.ChatCompletion.create(**chat_completion_args)
+                    # response = openai.ChatCompletion.create(**chat_completion_args)
+                    response = await openai.ChatCompletion.acreate(**chat_completion_args)
 
                     text = response["choices"][0]["message"]["content"].strip(
                     )
@@ -455,7 +456,7 @@ While I strive to provide accurate and appropriate responses, please bear in min
 
         print("Responding to message...")
 
-        asyncio.ensure_future(self.generate_response(channel_key, message))
+        asyncio.create_task(self.generate_response(channel_key, message))
 
 
 if __name__ == "__main__":
