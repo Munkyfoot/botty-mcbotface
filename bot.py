@@ -95,7 +95,8 @@ While I strive to provide accurate and appropriate responses, please bear in min
             {"role": "assistant",
                 "content": "I know, right? The universe is an amazing place."},
             {"role": "user", "content": "<M1kee>Do you have any special commands that I can use?"},
-            {"role": "assistant", "content": "I sure do! Interact with me by using Discord's slash commands."},
+            {"role": "assistant",
+                "content": "I sure do! Interact with me by using Discord's slash commands."},
             {"role": "user", "content": "<M1kee>What are the most popular games right now?"},
             {"role": "assistant", "content": "Unfortunately, my most recent data is from September 1, 2021 so I don't know what's popular right now."},
             {"role": "user", "content": "<M1kee>No worries. Someone else just joined. Can you introduce yourself again?"},
@@ -172,10 +173,9 @@ While I strive to provide accurate and appropriate responses, please bear in min
     def start(self):
         self.client.run(os.getenv("DISCORD_TOKEN"))
 
-    async def create_chat_completion(self, *args, **kwargs):
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, functools.partial(openai.ChatCompletion.create, *args, **kwargs))
-    
+    def _create_chat_completion(self, args):
+        return openai.ChatCompletion.create(**args)
+
     async def generate_response(self, channel_key: str, ctx: discord.Interaction | discord.Message):
         """Generates a response to a message using the GPT-3 API."""
 
@@ -193,22 +193,35 @@ While I strive to provide accurate and appropriate responses, please bear in min
             while attempts < 3:
                 try:
                     attempts += 1
-                    response = await self.create_chat_completion(
-                        model=self.model,
-                        messages=messages,
-                        temperature=0.7,
-                        max_tokens=self.max_output_token_count,
-                        top_p=1,
-                        frequency_penalty=0.4,
-                        presence_penalty=0.6,
-                        user="randy-bot"
-                    )
+                    chat_completion_args = {
+                        "model": self.model,
+                        "messages": messages,
+                        "temperature": 0.7,
+                        "max_tokens": self.max_output_token_count,
+                        "top_p": 1,
+                        "frequency_penalty": 0.4,
+                        "presence_penalty": 0.6,
+                        "user": "randy-bot",
+                    }
+                    if hasattr(asyncio, "to_thread"):
+                        print("Using asyncio.to_thread")
+                        response = await asyncio.wait_for(asyncio.to_thread(self._create_chat_completion, chat_completion_args), timeout=30)
+                    else:
+                        print("Using run_in_executor")
+                        loop = asyncio.get_event_loop()
+                        response_future = loop.run_in_executor(
+                            None, self._create_chat_completion, chat_completion_args)
+                        response = await asyncio.wait_for(response_future, timeout=30)
 
                     text = response["choices"][0]["message"]["content"].strip(
                     )
                     tokens_in, tokens_out, tokens_total = response["usage"].values(
                     )
                     usage_message = f"Usage: {tokens_in} + {tokens_out} = {tokens_total}"
+                    break
+                except asyncio.TimeoutError:
+                    print(f"API request timed out. Aborting...")
+                    error_message += f"Error (Attempt {attempts}): API request timed out.\n"
                     break
                 except Exception as e:
                     print(
@@ -244,10 +257,10 @@ While I strive to provide accurate and appropriate responses, please bear in min
         except:
             await interaction.response.send_message("I can't respond in this channel.")
             return
-        
+
         self.sleeping[channel_key] = True
         await interaction.response.send_message("Zzz...")
-    
+
     async def wake(self, interaction: discord.Interaction):
         try:
             channel_key = self.get_channel_key(
@@ -255,7 +268,7 @@ While I strive to provide accurate and appropriate responses, please bear in min
         except:
             await interaction.response.send_message("I can't respond in this channel.")
             return
-        
+
         self.sleeping[channel_key] = False
         await interaction.response.send_message("I'm awake!")
 
@@ -320,13 +333,14 @@ While I strive to provide accurate and appropriate responses, please bear in min
 
                 self.message_history[channel_key].append(
                     {"role": "system", "content": f"Here is the summary of a Wikipedia article about \"{page.title}\":\n\n{page.summary}"})
-                
+
                 self.message_history[channel_key].append(
                     {"role": "system", "content": f"Please summarize the Wikipedia article you were just provided with. Begin your response with \"{page.title}...\". After your summary, ask the user if they have any questions about the subject of the article."}
                 )
 
                 self.abridge_history(channel_key)
-                asyncio.create_task(self.generate_response(channel_key, interaction))                
+                asyncio.create_task(
+                    self.generate_response(channel_key, interaction))
             except Exception as e:
                 print(
                     f"Experienced an error while getting the page: {e}")
@@ -355,8 +369,10 @@ While I strive to provide accurate and appropriate responses, please bear in min
                         result_label = f"\n\t{i+1}. {result['title']}: {result['description']}"
                         if len(result_label) > 80:
                             result_label = result_label[:77] + "..."
-                        result_button = discord.ui.Button(label=result_label, custom_id=str(i))
-                        result_button.callback = lambda ctx, idx=i: self.read_result(ctx, idx)
+                        result_button = discord.ui.Button(
+                            label=result_label, custom_id=str(i))
+                        result_button.callback = lambda ctx, idx=i: self.read_result(
+                            ctx, idx)
 
                         search_results_view.add_item(result_button)
 
