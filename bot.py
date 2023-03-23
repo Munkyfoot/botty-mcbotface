@@ -173,9 +173,6 @@ While I strive to provide accurate and appropriate responses, please bear in min
     def start(self):
         self.client.run(os.getenv("DISCORD_TOKEN"))
 
-    def _create_chat_completion(self, args):
-        return openai.ChatCompletion.create(**args)
-
     async def generate_response(self, channel_key: str, ctx: discord.Interaction | discord.Message):
         """Generates a response to a message using the GPT-3 API."""
 
@@ -203,15 +200,8 @@ While I strive to provide accurate and appropriate responses, please bear in min
                         "presence_penalty": 0.6,
                         "user": "randy-bot",
                     }
-                    if hasattr(asyncio, "to_thread"):
-                        print("Using asyncio.to_thread")
-                        response = await asyncio.wait_for(asyncio.to_thread(self._create_chat_completion, chat_completion_args), timeout=30)
-                    else:
-                        print("Using run_in_executor")
-                        loop = asyncio.get_event_loop()
-                        response_future = loop.run_in_executor(
-                            None, self._create_chat_completion, chat_completion_args)
-                        response = await asyncio.wait_for(response_future, timeout=30)
+                    
+                    response = openai.ChatCompletion.create(**chat_completion_args)
 
                     text = response["choices"][0]["message"]["content"].strip(
                     )
@@ -465,7 +455,7 @@ While I strive to provide accurate and appropriate responses, please bear in min
 
         print("Responding to message...")
 
-        asyncio.create_task(self.generate_response(channel_key, message))
+        asyncio.ensure_future(self.generate_response(channel_key, message))
 
 
 if __name__ == "__main__":
