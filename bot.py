@@ -23,7 +23,7 @@ class BotGPT:
         self.wiki = WikiAPI()
 
         self.openai_api = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.model = "gpt-4-0613"
+        self.model = "gpt-4-1106-preview"
         self.init_token_count = 0
         self.max_output_token_count = 640
         self.max_input_token_count = 4096 - self.max_output_token_count - 1
@@ -116,6 +116,7 @@ While I strive to provide accurate and appropriate responses, please bear in min
             self.model == "gpt-3.5-turbo-0301"
             or self.model == "gpt-3.5-turbo-0613"
             or self.model == "gpt-4-0613"
+            or self.model == "gpt-4-1106-preview"
         ):
             num_tokens = 0
 
@@ -467,7 +468,9 @@ While I strive to provide accurate and appropriate responses, please bear in min
         try:
             await interaction.response.defer(thinking=True)
 
-            print(f"Generating image from prompt: {prompt}")
+            print(
+                f'Generating "{prompt}"... (detailed={detailed}, wide={wide}, realism={realism})'
+            )
             image_completion_args = {
                 "model": "dall-e-3",
                 "prompt": prompt,
