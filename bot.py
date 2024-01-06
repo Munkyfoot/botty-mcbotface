@@ -1,6 +1,8 @@
 """Randy the Random Robot is a Discord bot that uses the OpenAI GPT-3 API to generate random text."""
 
 import os
+import base64
+from io import BytesIO
 from openai import AsyncOpenAI
 import tiktoken
 import asyncio
@@ -452,14 +454,19 @@ You are not able to access the internet directly and most make your way through 
                 "quality": "hd" if detailed else "standard",
                 "size": "1792x1024" if wide else "1024x1024",
                 "style": "natural" if realism else "vivid",
+                "response_format": "b64_json",
                 "user": "randy-bot",
             }
 
             response = await self.openai_api.images.generate(**image_completion_args)
 
-            image_url = response.data[0].url
+            image_data = response.data[0].b64_json
+            binary_data = base64.b64decode(image_data)
+            image = BytesIO(binary_data)
 
-            await interaction.followup.send(image_url)
+            await interaction.followup.send(
+                file=discord.File(image, filename="image.png")
+            )
 
             user_name, user_id = str(interaction.user).split("#")
 
