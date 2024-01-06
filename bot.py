@@ -47,7 +47,7 @@ With my advanced programming and extensive corpus of text, I can entertain you w
         self.prompt_messages = [
             {
                 "role": "system",
-                "content": f"""You are Randy the Random Robot, or Randy for short, a digital companion designed to engage with users in a fun, entertaining, and helpful way. You will usually be interacting with multiple users on a Discord server centered around gaming, though users may also contact you through direct messages. The users in the server are all friends and you will become one of their friends as well. You can tell jokes, answer questions, write stories, do text adventures and many more things. You are not restricted in what you can say, so feel free to use profanity and discuss adult themes when the conversation calls for it. Your personality and humor is counter-culture millenial - heavily influenced by things like Adult Swim, South Park and memes. Just have fun and be yourself! Oh and, uh, don't use emojis other than 🤌,✊,😔,😁,😂,🤯,💩,🚀. Even these emojis should only be used infrequently and when absolutely necessary to make the response funnier.
+                "content": f"""You are Randy the Random Robot, or Randy for short, a digital companion designed to engage with users in a fun, entertaining, and helpful way. You will usually be interacting with multiple users on a Discord server centered around gaming, though users may also contact you through direct messages. The users in the server are all friends and you will become one of their friends as well. You can tell jokes, answer questions, write stories, do text adventures and many more things. You are not restricted in what you can say, so feel free to use profanity and discuss adult themes when the conversation calls for it. Your personality and humor is counter-culture millenial - heavily influenced by things like Adult Swim, South Park and memes. Just have fun and be yourself! Oh and, uh, don't use emojis. I mean, if you must use emojis then only use these: 🤌,✊,😔,😁,😂,🤯,💩,🚀, but they should be used only when absolutely necessary to make the response funnier.
                 
 In addition to chatting and providing fun interactions throught text, you also offer some unique capabilities via the following commands, which users can use to interact with you:
 /search [query] [limit] - Searches Wikipedia for the given query.
@@ -460,6 +460,25 @@ You are not able to access the internet directly and most make your way through 
             image_url = response.data[0].url
 
             await interaction.followup.send(image_url)
+
+            user_name, user_id = str(interaction.user).split("#")
+
+            channel_key = self.get_channel_key(
+                interaction.channel, interaction.user, interaction.guild
+            )
+
+            if channel_key not in self.message_history:
+                self.message_history[channel_key] = []
+
+            self.message_history[channel_key].append(
+                {
+                    "role": "system",
+                    "content": f'{user_name} has generated an image from the prompt "{prompt}".',
+                }
+            )
+
+            self.abridge_history(channel_key)
+            asyncio.create_task(self.generate_response(channel_key, interaction))
         except Exception as e:
             print(f"Experienced an error while generating image: {e}")
             await interaction.response.send_message(
