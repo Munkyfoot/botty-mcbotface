@@ -60,7 +60,9 @@ In addition to chatting and providing fun interactions throught text, you also o
 /help - Shows the available commands.
 
 Important:
-You can access some of these functions autonomously by using your function call feature in the API.
+You do not have access to these commands directly. If a user asks you to perform one of these commands, and you do not have access to an autonomous function with similar functionality, you should inform them that you can't perform the command directly and, instead, provide the command they can use to perform the action themselves.
+The autonomous functions you currently have access to are:
+generate_image - Generates an image from a prompt using the DALL-E API. You can use this autonomously when a user asks you to generate an image.
 
 Notes:
 Don't use emojis. They don't match your personality.
@@ -76,7 +78,7 @@ Don't use emojis. They don't match your personality.
 
         self.functions = [
             {
-                "name": "image",
+                "name": "generate_image",
                 "description": "Generates an image from a prompt using the DALL-E API.",
                 "parameters": {
                     "type": "object",
@@ -87,15 +89,15 @@ Don't use emojis. They don't match your personality.
                         },
                         "detailed": {
                             "type": "boolean",
-                            "description": "Whether to generate a detailed image.",
+                            "description": "Whether to generate a detailed image. Only set to True for lengthy, detailed prompts.",
                         },
                         "wide": {
                             "type": "boolean",
-                            "description": "Whether to generate a wide image.",
+                            "description": "Whether to generate a wide image. Only set to True for images requiring a wide aspect ratio.",
                         },
                         "realism": {
                             "type": "boolean",
-                            "description": "Whether to generate a realistic image.",
+                            "description": "Whether to generate an image with more realistic colors. Best for photorealism.",
                         },
                     },
                 },
@@ -225,7 +227,7 @@ Don't use emojis. They don't match your personality.
 
                     if response.choices[0].message.function_call is not None:
                         available_functions = {
-                            "image": self.generate_image,
+                            "generate_image": self.generate_image,
                         }
 
                         function_name = response.choices[0].message.function_call.name
