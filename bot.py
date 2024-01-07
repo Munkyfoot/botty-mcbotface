@@ -2,6 +2,7 @@
 
 import os
 import base64
+import json
 from io import BytesIO
 from openai import AsyncOpenAI
 import tiktoken
@@ -59,7 +60,7 @@ In addition to chatting and providing fun interactions throught text, you also o
 /help - Shows the available commands.
 
 Important:
-You are not able to access the internet directly and most make your way through the world with only your vibes and existing knowledge. While you can't use the commands above directly yourself, you can always suggest them to the user. For example, if someone asks you to create an image you can say something like, "My bad yo, but I can't actually create images autonomously. However, I do have an image generation command you can use by typing `/image [prompt]`." Same idea applies to the other commands.
+You can access some of these functions autonomously by using your function call feature in the API.
 
 Notes:
 Don't use emojis. They don't match your personality.
@@ -71,6 +72,34 @@ Don't use emojis. They don't match your personality.
                 "name": "admin",
             },
             {"role": "assistant", "content": self.introduction},
+        ]
+
+        self.functions = [
+            {
+                "name": "image",
+                "description": "Generates an image from a prompt using the DALL-E API.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "prompt": {
+                            "type": "string",
+                            "description": "The prompt to generate the image from.",
+                        },
+                        "detailed": {
+                            "type": "boolean",
+                            "description": "Whether to generate a detailed image.",
+                        },
+                        "wide": {
+                            "type": "boolean",
+                            "description": "Whether to generate a wide image.",
+                        },
+                        "realism": {
+                            "type": "boolean",
+                            "description": "Whether to generate a realistic image.",
+                        },
+                    },
+                },
+            }
         ]
 
     def get_tokens_from_text(self, text):
@@ -155,7 +184,10 @@ Don't use emojis. They don't match your personality.
         self.client.run(os.getenv("DISCORD_TOKEN"))
 
     async def generate_response(
-        self, channel_key: str, ctx: discord.Interaction | discord.Message
+        self,
+        channel_key: str,
+        ctx: discord.Interaction | discord.Message,
+        functions_enabled: bool = True,
     ):
         """Generates a response to a message using the GPT-3 API."""
 
@@ -184,11 +216,29 @@ Don't use emojis. They don't match your personality.
                         "user": "randy-bot",
                     }
 
+                    if functions_enabled:
+                        chat_completion_args["functions"] = self.functions
+
                     response = await self.openai_api.chat.completions.create(
                         **chat_completion_args
                     )
 
-                    text = response.choices[0].message.content.strip()
+                    if response.choices[0].message.function_call is not None:
+                        available_functions = {
+                            "image": self.generate_image,
+                        }
+
+                        function_name = response.choices[0].message.function_call.name
+                        function_args = json.loads(
+                            response.choices[0].message.function_call.arguments
+                        )
+                        function_args["interaction"] = ctx
+                        function = available_functions[function_name]
+
+                        await function(**function_args)
+                        return
+                    else:
+                        text = response.choices[0].message.content.strip()
                     completion_tokens = response.usage.completion_tokens
                     prompt_tokens = response.usage.prompt_tokens
                     total_tokens = response.usage.total_tokens
@@ -436,7 +486,7 @@ Don't use emojis. They don't match your personality.
 
     async def generate_image(
         self,
-        interaction: discord.Interaction,
+        interaction: discord.Interaction | discord.Message,
         prompt: str,
         detailed: bool = False,
         wide: bool = False,
@@ -444,7 +494,8 @@ Don't use emojis. They don't match your personality.
     ):
         """Generates an image from a prompt using the GPT-3 API."""
         try:
-            await interaction.response.defer(thinking=True)
+            if type(interaction) == discord.Interaction:
+                await interaction.response.defer(thinking=True)
 
             print(
                 f'Generating "{prompt}"... (detailed={detailed}, wide={wide}, realism={realism})'
@@ -465,28 +516,50 @@ Don't use emojis. They don't match your personality.
             binary_data = base64.b64decode(image_data)
             image = BytesIO(binary_data)
 
-            await interaction.followup.send(
-                file=discord.File(image, filename="image.png")
-            )
+            if type(interaction) == discord.Interaction:
+                await interaction.followup.send(
+                    file=discord.File(image, filename="image.png")
+                )
+            else:
+                await interaction.channel.send(
+                    file=discord.File(image, filename="image.png")
+                )
 
-            user_name, user_id = str(interaction.user).split("#")
+            user_name, user_id = str(
+                interaction.user
+                if type(interaction) == discord.Interaction
+                else interaction.author
+            ).split("#")
 
-            channel_key = self.get_channel_key(
-                interaction.channel, interaction.user, interaction.guild
-            )
+            if type(interaction) == discord.Interaction:
+                channel_key = self.get_channel_key(
+                    interaction.channel, interaction.user, interaction.guild
+                )
+            else:
+                channel_key = self.get_channel_key(
+                    interaction.channel, interaction.author, interaction.guild
+                )
 
             if channel_key not in self.message_history:
                 self.message_history[channel_key] = []
 
-            self.message_history[channel_key].append(
-                {
-                    "role": "system",
-                    "content": f'{user_name} has generated an image from the prompt "{prompt}".',
-                }
-            )
+            if type(interaction) == discord.Interaction:
+                self.message_history[channel_key].append(
+                    {
+                        "role": "system",
+                        "content": f'{user_name} has generated an image from the prompt "{prompt}".',
+                    }
+                )
+            else:
+                self.message_history[channel_key].append(
+                    {
+                        "role": "system",
+                        "content": f'An image has been generated from the prompt "{prompt}". Follow up with a comment about the image.',
+                    },
+                )
 
             self.abridge_history(channel_key)
-            asyncio.create_task(self.generate_response(channel_key, interaction))
+            asyncio.create_task(self.generate_response(channel_key, interaction, False))
         except Exception as e:
             print(f"Experienced an error while generating image: {e}")
             await interaction.response.send_message(
