@@ -62,6 +62,7 @@ In addition to chatting and providing fun interactions throught text, you also o
 Important:
 You do not have access to these commands directly. If a user asks you to perform one of these commands, and you do not have access to an autonomous function with similar functionality, you should inform them that you can't perform the command directly and, instead, provide the command they can use to perform the action themselves.
 The autonomous functions you currently have access to are:
+search - Searches Wikipedia for a given query and returns the top results up to limit. You can use this autonomously when a user asks you to search for something.
 generate_image - Generates an image from a prompt using the DALL-E API. You can use this autonomously when a user asks you to generate an image.
 
 Notes:
@@ -77,6 +78,23 @@ Don't use emojis. They don't match your personality.
         ]
 
         self.functions = [
+            {
+                "name": "search",
+                "description": "Searches Wikipedia for a given query and returns the top results up to limit.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The query to search for.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "The number of results to return.",
+                        },
+                    },
+                },
+            },
             {
                 "name": "generate_image",
                 "description": "Generates an image from a prompt using the DALL-E API.",
@@ -101,7 +119,7 @@ Don't use emojis. They don't match your personality.
                         },
                     },
                 },
-            }
+            },
         ]
 
     def get_tokens_from_text(self, text):
@@ -228,6 +246,7 @@ Don't use emojis. They don't match your personality.
                     if response.choices[0].message.function_call is not None:
                         available_functions = {
                             "generate_image": self.generate_image,
+                            "search": self.search,
                         }
 
                         function_name = response.choices[0].message.function_call.name
@@ -429,7 +448,7 @@ Don't use emojis. They don't match your personality.
             )
 
     async def search(
-        self, interaction: discord.Interaction, query: str, limit: int = 5
+        self, interaction: discord.Interaction | discord.Message, query: str, limit: int = 5
     ):
         if len(query) > 0:
             try:
@@ -439,12 +458,19 @@ Don't use emojis. They don't match your personality.
                 print(f'Experienced an error while searching for "{query}": {e}')
                 search_results = []
 
+            if type(interaction) == discord.Interaction:
+                channel_key = self.get_channel_key(
+                    interaction.channel, interaction.user, interaction.guild
+                )
+            else:
+                channel_key = self.get_channel_key(
+                    interaction.channel, interaction.author, interaction.guild
+                )
+
             if len(search_results) > 0:
                 try:
                     self.search_results[
-                        self.get_channel_key(
-                            interaction.channel, interaction.user, interaction.guild
-                        )
+                        channel_key
                     ] = [result["key"] for result in search_results]
                     search_results_message = (
                         f'Here are the top {len(search_results)} results for "{query}":'
@@ -465,26 +491,44 @@ Don't use emojis. They don't match your personality.
 
                         search_results_view.add_item(result_button)
 
-                    await interaction.response.send_message(
-                        search_results_message, view=search_results_view
-                    )
+                    if type(interaction) == discord.Interaction:
+                        await interaction.response.send_message(
+                            search_results_message, view=search_results_view
+                        )
+                    else:
+                        await interaction.channel.send(
+                            search_results_message, view=search_results_view
+                        )
                 except Exception as e:
                     print(
                         f'Experienced an error while sending search results for "{query}": {e}'
                     )
-                    await interaction.response.send_message(
-                        f'Something went wrong while searching for "{query}". Please try again later.'
-                    )
+                    if type(interaction) == discord.Interaction:
+                        await interaction.response.send_message(
+                            f'Something went wrong while searching for "{query}". Please try again later.'
+                        )
+                    else:
+                        await interaction.channel.send(
+                            f'Something went wrong while searching for "{query}". Please try again later.'
+                        )
 
             else:
                 print("No search results found.")
-                await interaction.response.send_message(
-                    f'Sorry, I couldn\'t find any results for "{query}".'
-                )
+                if type(interaction) == discord.Interaction:
+                    await interaction.response.send_message(
+                        f'Sorry, I couldn\'t find any results for "{query}".'
+                    )
+                else:
+                    await interaction.channel.send(
+                        f'Sorry, I couldn\'t find any results for "{query}".'
+                    )
         else:
-            await interaction.response.send_message(
-                "You need to include a search query."
-            )
+            if type(interaction) == discord.Interaction:
+                await interaction.response.send_message(
+                    "You need to include a search query."
+                )
+            else:
+                await interaction.channel.send("What do you want me to search for again?")
 
     async def generate_image(
         self,
