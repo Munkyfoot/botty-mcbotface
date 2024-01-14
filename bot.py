@@ -1,4 +1,4 @@
-"""Randy the Random Robot is a Discord bot that uses the OpenAI GPT-3 API to generate random text."""
+"""Customizable Discord Bot integrated with OpenAI's API."""
 
 import os
 import base64
@@ -12,8 +12,21 @@ from discord import app_commands
 from datetime import datetime, timedelta
 from utils import WikiAPI
 from dotenv import load_dotenv
+from dataclasses import dataclass
 
 load_dotenv()
+
+
+@dataclass
+class BotSettings:
+    """A dataclass for storing bot settings."""
+
+    model: str
+    max_output_token_count: int
+    max_input_token_count_base: int
+    bot_name: str
+    bot_introduction: str
+    system_message_base: str
 
 
 class BotGPT:
@@ -26,10 +39,22 @@ class BotGPT:
         self.wiki = WikiAPI()
 
         self.openai_api = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.model = "gpt-4-1106-preview"
+
+        try:
+            with open("settings.json", "r") as f:
+                self.settings = BotSettings(**json.load(f))
+        except FileNotFoundError:
+            print(
+                "Settings file not found. Please create a settings.json file and try again."
+            )
+            exit()
+
+        self.model = self.settings.model
         self.init_token_count = 0
-        self.max_output_token_count = 640
-        self.max_input_token_count = 8192 - self.max_output_token_count - 1
+        self.max_output_token_count = self.settings.max_output_token_count
+        self.max_input_token_count = (
+            self.settings.max_input_token_count_base - self.max_output_token_count - 1
+        )
         self.max_history_token_count = (
             self.max_input_token_count - self.init_token_count
         )
@@ -38,17 +63,15 @@ class BotGPT:
         self.sleeping = {}
         self.search_results = {}
 
-        self.dm_whitelist = [
-            "munkyfoot#0",
-        ]
+        self.dm_whitelist = os.getenv("DM_WHITELIST").split(",")
 
+        self.introduction = self.settings.bot_introduction
         self.introduce_on_join = False
-        self.introduction = """What is good my dudes and dudettes? It's your digital compadre Randy here. I'm back with all new brain stuff and, let me tell you what, I'm feeling pretty good. I got jokes, stories, and all kinds of other stuff. I'm ready to have a damn good time and bust a couple chuckles while I'm at it. Let's do this!"""
 
         self.prompt_messages = [
             {
                 "role": "system",
-                "content": f"""You are Randy the Random Robot, or Randy for short, a digital companion with an awesome personality. You will usually be interacting with multiple users on a Discord server centered around gaming, though users may also contact you through direct messages. The users in the server are all friends and you will become one of their friends as well. You can tell jokes, answer questions, write stories, do text adventures and many more things. You are not restricted in what you can say, so feel free to use profanity and discuss adult themes when the conversation calls for it. Your personality and humor is counter-culture millenial - heavily influenced by things like Adult Swim, South Park and memes. Just have fun and be yourself!
+                "content": f"""{self.settings.system_message_base}
                 
 In addition to chatting and providing fun interactions throught text, you also offer some unique capabilities via the following commands, which users can use to interact with you:
 /search [query] [limit] - Searches Wikipedia for the given query.
@@ -247,7 +270,7 @@ Don't use emojis. They don't match your personality.
                         "top_p": 1,
                         "frequency_penalty": 0.4,
                         "presence_penalty": 0.6,
-                        "user": "randy-bot",
+                        "user": self.settings.bot_name,
                     }
 
                     if functions_enabled:
@@ -606,7 +629,7 @@ Don't use emojis. They don't match your personality.
                 "size": "1792x1024" if wide else "1024x1024",
                 "style": "natural" if realism else "vivid",
                 "response_format": "b64_json",
-                "user": "randy-bot",
+                "user": self.settings.bot_name,
             }
 
             response = await self.openai_api.images.generate(**image_completion_args)
@@ -711,7 +734,7 @@ Don't use emojis. They don't match your personality.
         user_name, user_id = str(message.author).split("#")
 
         if channel_key is None:
-            if "randy" in message.content.lower():
+            if self.settings.bot_name.lower().split(" ")[0] in message.content.lower():
                 await message.channel.send(
                     "Hey! I can't respond in this channel. Talk to me in the #random channel instead."
                 )
@@ -744,7 +767,7 @@ Don't use emojis. They don't match your personality.
         if channel_key not in self.sleeping:
             self.sleeping[channel_key] = False
 
-        if "randy" in message.content.lower():
+        if self.settings.bot_name.lower().split(" ")[0] in message.content.lower():
             if self.sleeping[channel_key]:
                 self.sleeping[channel_key] = False
                 print("Waking up...")
@@ -758,52 +781,54 @@ Don't use emojis. They don't match your personality.
 
 
 if __name__ == "__main__":
-    randy = BotGPT()
-    randy.setup()
+    bot = BotGPT()
+    bot.setup()
 
-    @randy.client.event
+    @bot.client.event
     async def on_ready():
-        await randy.tree.sync()
-        await randy.handle_on_ready()
+        await bot.tree.sync()
+        await bot.handle_on_ready()
 
-    @randy.client.event
+    @bot.client.event
     async def on_message(message):
         if message.content.startswith("/"):
             return
-        await randy.handle_on_message(message)
+        await bot.handle_on_message(message)
 
-    @randy.tree.command(name="help", description="Show available commands.")
+    @bot.tree.command(name="help", description="Show available commands.")
     async def recieve_help_command(interaction: discord.Interaction):
-        help_message = """Here are the available commands:
+        help_message = f"""Here are the available commands:
 `/search [query] [limit]`- Searches Wikipedia for the given query.
 `/read [result index]` - Reads the Wikipedia article at the given index.
 `/image [prompt] [detailed] [wide] [realism]` - Generates an image from a prompt using the DALL-E API.
 `/forget` - Forgets everything.
-`/sleep` - Puts Randy to sleep.
-`/wake` - Wakes Randy up.
+`/sleep` - Puts {bot.settings.bot_name} to sleep.
+`/wake` - Wakes {bot.settings.bot_name} up.
 `/help` - Shows this message."""
         await interaction.response.send_message(help_message)
 
-    @randy.tree.command(name="sleep", description="Puts Randy to sleep.")
+    @bot.tree.command(
+        name="sleep", description="Puts {bot.settings.bot_name} to sleep."
+    )
     async def recieve_sleep_command(interaction: discord.Interaction):
-        await randy.sleep(interaction)
+        await bot.sleep(interaction)
 
-    @randy.tree.command(name="wake", description="Wakes Randy up.")
+    @bot.tree.command(name="wake", description="Wakes {bot.settings.bot_name} up.")
     async def recieve_wake_command(interaction: discord.Interaction):
-        await randy.wake(interaction)
+        await bot.wake(interaction)
 
-    @randy.tree.command(name="forget", description="Forgets everything.")
+    @bot.tree.command(name="forget", description="Forgets everything.")
     async def recieve_forget_command(interaction: discord.Interaction):
-        await randy.forget(interaction)
+        await bot.forget(interaction)
 
-    @randy.tree.command(
+    @bot.tree.command(
         name="read",
         description="Reads a Wikipedia article from search results. Must run the search command first.",
     )
     async def recieve_read_command(interaction: discord.Interaction, result_index: int):
-        await randy.read_result(interaction, result_index - 1)
+        await bot.read_result(interaction, result_index - 1)
 
-    @randy.tree.command(
+    @bot.tree.command(
         name="search",
         description="Searches Wikipedia for a given query and returns the top results up to limit.",
     )
@@ -812,9 +837,9 @@ if __name__ == "__main__":
         query: str,
         limit: app_commands.Range[int, 1, 10] = 5,
     ):
-        await randy.search(interaction, query, limit)
+        await bot.search(interaction, query, limit)
 
-    @randy.tree.command(
+    @bot.tree.command(
         name="image",
         description="Generates an image from a prompt using the DALL-E API.",
     )
@@ -825,6 +850,6 @@ if __name__ == "__main__":
         wide: bool = False,
         realism: bool = False,
     ):
-        await randy.generate_image(interaction, prompt, detailed, wide, realism)
+        await bot.generate_image(interaction, prompt, detailed, wide, realism)
 
-    randy.start()
+    bot.start()
