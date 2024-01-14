@@ -649,11 +649,11 @@ Don't use emojis. They don't match your personality.
                     file=discord.File(image, filename="image.png")
                 )
 
-            user_name, user_id = str(
+            user_name = str(
                 interaction.user
                 if type(interaction) == discord.Interaction
                 else interaction.author
-            ).split("#")
+            )
 
             if type(interaction) == discord.Interaction:
                 channel_key = self.get_channel_key(
@@ -697,11 +697,11 @@ Don't use emojis. They don't match your personality.
         guild: discord.Guild,
     ):
         """Returns a unique key for each channel."""
-        user_name, user_id = str(author).split("#")
+        user_name = str(author)
         if channel.type == discord.ChannelType.private:
             print(author)
             if str(author) in self.dm_whitelist:
-                return f"user-{user_name}#{user_id}"
+                return f"user-{user_name}"
             else:
                 return None
         elif channel.name == "random":
@@ -733,7 +733,7 @@ Don't use emojis. They don't match your personality.
         channel_key = self.get_channel_key(
             message.channel, message.author, message.guild
         )
-        user_name, user_id = str(message.author).split("#")
+        user_name = str(message.author)
 
         if channel_key is None:
             if self.settings.bot_name.lower().split(" ")[0] in message.content.lower():

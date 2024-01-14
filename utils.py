@@ -1,6 +1,7 @@
 """A wrapper for the Wikipedia API that allows for searching and requesting pages."""
 
 import json
+import os
 
 import requests
 import wikipediaapi
@@ -14,7 +15,10 @@ class WikiAPI:
         self.base_url = "https://api.wikimedia.org/core/v1/wikipedia/"
         self.view_base_url = "https://en.wikipedia.org/wiki/"
         self.lang = "en"
-        self.wiki = wikipediaapi.Wikipedia(self.lang)
+        self.headers = {
+            "User-Agent": os.getenv("WIKIPEDIA_USER_AGENT"),
+        }
+        self.wiki = wikipediaapi.Wikipedia(self.lang, headers=self.headers)
 
     def search(self, query: str, limit: int = 10) -> dict:
         """Search for a page."""
@@ -22,7 +26,7 @@ class WikiAPI:
         params = {"q": query, "limit": limit}
 
         try:
-            response = requests.get(url, params=params)
+            response = requests.get(url, headers=self.headers, params=params)
         except Exception as e:
             print(e)
             return None
@@ -40,7 +44,7 @@ class WikiAPI:
         params = {"content_model": "json"}
 
         try:
-            response = requests.get(url, params=params)
+            response = requests.get(url, headers=self.headers, params=params)
         except Exception as e:
             print(e)
             return None
@@ -56,7 +60,7 @@ class WikiAPI:
         page = self.request_page(key)
 
         if page is not None:
-            response = requests.get(page["html_url"])
+            response = requests.get(page["html_url"], headers=self.headers)
             if response.status_code == 200:
                 print(response.text)
             else:
@@ -72,7 +76,7 @@ class WikiAPI:
         params = {"content_model": "json"}
 
         try:
-            response = requests.get(url, params=params)
+            response = requests.get(url, headers=self.headers, params=params)
         except Exception as e:
             print(e)
             return None
