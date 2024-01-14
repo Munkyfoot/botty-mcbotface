@@ -14,11 +14,7 @@ class WikiAPI:
         self.base_url = "https://api.wikimedia.org/core/v1/wikipedia/"
         self.view_base_url = "https://en.wikipedia.org/wiki/"
         self.lang = "en"
-        self.headers = {
-            # 'Authorization': f"Bearer {os.getenv('ACCESS_TOKEN')}",
-            "User-Agent": "Randy the Random Robot (mtlsoftworks@gmail.com)"
-        }
-        self.wiki = wikipediaapi.Wikipedia(self.lang, headers=self.headers)
+        self.wiki = wikipediaapi.Wikipedia(self.lang)
 
     def search(self, query: str, limit: int = 10) -> dict:
         """Search for a page."""
@@ -26,7 +22,7 @@ class WikiAPI:
         params = {"q": query, "limit": limit}
 
         try:
-            response = requests.get(url, headers=self.headers, params=params)
+            response = requests.get(url, params=params)
         except Exception as e:
             print(e)
             return None
@@ -44,7 +40,7 @@ class WikiAPI:
         params = {"content_model": "json"}
 
         try:
-            response = requests.get(url, headers=self.headers, params=params)
+            response = requests.get(url, params=params)
         except Exception as e:
             print(e)
             return None
@@ -60,7 +56,7 @@ class WikiAPI:
         page = self.request_page(key)
 
         if page is not None:
-            response = requests.get(page["html_url"], headers=self.headers)
+            response = requests.get(page["html_url"])
             if response.status_code == 200:
                 print(response.text)
             else:
@@ -76,7 +72,7 @@ class WikiAPI:
         params = {"content_model": "json"}
 
         try:
-            response = requests.get(url, headers=self.headers, params=params)
+            response = requests.get(url, params=params)
         except Exception as e:
             print(e)
             return None
