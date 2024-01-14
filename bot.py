@@ -1,18 +1,20 @@
 """Customizable Discord Bot integrated with OpenAI's API."""
 
-import os
+import asyncio
 import base64
 import json
-from io import BytesIO
-from openai import AsyncOpenAI
-import tiktoken
-import asyncio
-import discord
-from discord import app_commands
-from datetime import datetime, timedelta
-from utils import WikiAPI
-from dotenv import load_dotenv
+import os
 from dataclasses import dataclass
+from datetime import timedelta
+from io import BytesIO
+
+import discord
+import tiktoken
+from discord import app_commands
+from dotenv import load_dotenv
+from openai import AsyncOpenAI
+
+from utils import WikiAPI
 
 load_dotenv()
 
