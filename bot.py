@@ -29,7 +29,7 @@ class BotGPT:
         self.model = "gpt-4-1106-preview"
         self.init_token_count = 0
         self.max_output_token_count = 640
-        self.max_input_token_count = 4096 - self.max_output_token_count - 1
+        self.max_input_token_count = 8192 - self.max_output_token_count - 1
         self.max_history_token_count = (
             self.max_input_token_count - self.init_token_count
         )
@@ -63,6 +63,7 @@ Important:
 You do not have access to these commands directly. If a user asks you to perform one of these commands, and you do not have access to an autonomous function with similar functionality, you should inform them that you can't perform the command directly and, instead, provide the command they can use to perform the action themselves.
 The autonomous functions you currently have access to are:
 search - Searches Wikipedia for a given query and returns the top results up to limit. You can use this autonomously when a user asks you to search for something.
+read - Reads a Wikipedia article from search results. You can use this autonomously when a user asks you to read an article.
 generate_image - Generates an image from a prompt using the DALL-E API. You can use this autonomously when a user asks you to generate an image.
 
 Notes:
@@ -91,6 +92,19 @@ Don't use emojis. They don't match your personality.
                         "limit": {
                             "type": "integer",
                             "description": "The number of results to return.",
+                        },
+                    },
+                },
+            },
+            {
+                "name": "read",
+                "description": "Reads a Wikipedia article from search results.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "result_index": {
+                            "type": "integer",
+                            "description": "The index of the result to read.",
                         },
                     },
                 },
@@ -245,8 +259,9 @@ Don't use emojis. They don't match your personality.
 
                     if response.choices[0].message.function_call is not None:
                         available_functions = {
-                            "generate_image": self.generate_image,
                             "search": self.search,
+                            "read": self.read_result,
+                            "generate_image": self.generate_image,
                         }
 
                         function_name = response.choices[0].message.function_call.name
@@ -341,13 +356,23 @@ Don't use emojis. They don't match your personality.
 
     async def read_result(self, interaction: discord.Interaction, result_index: int):
         try:
-            channel_key = self.get_channel_key(
-                interaction.channel, interaction.user, interaction.guild
-            )
+            if type(interaction) == discord.Interaction:
+                channel_key = self.get_channel_key(
+                    interaction.channel, interaction.user, interaction.guild
+                )
+            else:
+                channel_key = self.get_channel_key(
+                    interaction.channel, interaction.author, interaction.guild
+                )
         except:
-            await interaction.response.send_message(
-                "I can't read an article in this channel."
-            )
+            if type(interaction) == discord.Interaction:
+                await interaction.response.send_message(
+                    "I can't read an article in this channel."
+                )
+            else:
+                await interaction.channel.send(
+                    "I can't read an article in this channel."
+                )
             return
 
         if channel_key not in self.search_results:
@@ -357,9 +382,14 @@ Don't use emojis. They don't match your personality.
             search_results = self.search_results[channel_key]
 
             if result_index < 0 or result_index >= len(search_results):
-                await interaction.response.send_message(
-                    "I don't have a result with that index."
-                )
+                if type(interaction) == discord.Interaction:
+                    await interaction.response.send_message(
+                        "I don't have a result with that index."
+                    )
+                else:
+                    await interaction.channel.send(
+                        "Looks like I tried to read an article that doesn't exist. We might need to run another search."
+                    )
                 return
 
             result_key = search_results[result_index]
@@ -414,12 +444,20 @@ Don't use emojis. They don't match your personality.
                         else:
                             continue
 
-                await interaction.response.send_message(
-                    f"Here's the article: {self.wiki.get_view_url(result_key)}"
-                )
-                await interaction.followup.send(
-                    "Reading it now... I'll have a summary of the article in a few seconds!"
-                )
+                if type(interaction) == discord.Interaction:
+                    await interaction.response.send_message(
+                        f"Here's the article: {self.wiki.get_view_url(result_key)}"
+                    )
+                    await interaction.followup.send(
+                        "Reading it now... I'll have a summary of the article in a few seconds!"
+                    )
+                else:
+                    await interaction.channel.send(
+                        f"Here's the article: {self.wiki.get_view_url(result_key)}"
+                    )
+                    await interaction.channel.send(
+                        "Reading it now... I'll have a summary of the article in a few seconds!"
+                    )
 
                 self.message_history[channel_key].append(
                     {
@@ -436,19 +474,32 @@ Don't use emojis. They don't match your personality.
                 )
 
                 self.abridge_history(channel_key)
-                asyncio.create_task(self.generate_response(channel_key, interaction))
+                asyncio.create_task(
+                    self.generate_response(channel_key, interaction, False)
+                )
             except Exception as e:
                 print(f"Experienced an error while getting the page: {e}")
-                await interaction.response.send_message(
-                    "Something went wrong while getting the page. Please try again later."
-                )
+                if type(interaction) == discord.Interaction:
+                    await interaction.response.send_message(
+                        "Something went wrong while getting the page. Please try again later."
+                    )
+                else:
+                    await interaction.channel.send(
+                        "Something went wrong while getting the page. Please try again later."
+                    )
         else:
-            await interaction.response.send_message(
-                "You need to search for something first."
-            )
+            if type(interaction) == discord.Interaction:
+                await interaction.response.send_message(
+                    "You need to search for something first."
+                )
+            else:
+                await interaction.channel.send("What do you want me to read again?")
 
     async def search(
-        self, interaction: discord.Interaction | discord.Message, query: str, limit: int = 5
+        self,
+        interaction: discord.Interaction | discord.Message,
+        query: str,
+        limit: int = 5,
     ):
         if len(query) > 0:
             try:
@@ -469,9 +520,9 @@ Don't use emojis. They don't match your personality.
 
             if len(search_results) > 0:
                 try:
-                    self.search_results[
-                        channel_key
-                    ] = [result["key"] for result in search_results]
+                    self.search_results[channel_key] = [
+                        result["key"] for result in search_results
+                    ]
                     search_results_message = (
                         f'Here are the top {len(search_results)} results for "{query}":'
                     )
@@ -528,7 +579,9 @@ Don't use emojis. They don't match your personality.
                     "You need to include a search query."
                 )
             else:
-                await interaction.channel.send("What do you want me to search for again?")
+                await interaction.channel.send(
+                    "What do you want me to search for again?"
+                )
 
     async def generate_image(
         self,
