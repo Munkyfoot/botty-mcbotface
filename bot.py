@@ -23,12 +23,13 @@ load_dotenv()
 class BotSettings:
     """A dataclass for storing bot settings."""
 
-    model: str
-    max_output_token_count: int
-    max_input_token_count_base: int
-    bot_name: str
-    bot_introduction: str
-    system_message_base: str
+    model: str = "gpt-3.5-turbo"
+    max_output_token_count: int = 512
+    max_input_token_count_base: int = 2048
+    bot_name: str = "Botty McBotface"
+    bot_introduction: str = "Hi! I'm Botty McBotface, a bot powered by OpenAI's API. I'm still learning, so please be patient with me. I'm not perfect, but I'm trying my best!"
+    system_message_base: str = "You are Botty McBotface, a bot powered by OpenAI's API. You are a friendly, helpful bot that is always willing to chat and help out. You are not perfect, but you are trying your best."
+    suppress_emojis: bool = False
 
 
 class BotGPT:
@@ -47,9 +48,9 @@ class BotGPT:
                 self.settings = BotSettings(**json.load(f))
         except FileNotFoundError:
             print(
-                "Settings file not found. Please create a settings.json file and try again."
+                "Settings file not found. Using default settings. Please create a settings.json file to customize the bot."
             )
-            exit()
+            self.settings = BotSettings()
 
         self.model = self.settings.model
         self.init_token_count = 0
@@ -91,8 +92,7 @@ search - Searches Wikipedia for a given query and returns the top results up to 
 read - Reads a Wikipedia article from search results. You can use this autonomously when a user asks you to read an article.
 generate_image - Generates an image from a prompt using the DALL-E API. You can use this autonomously when a user asks you to generate an image.
 
-Notes:
-Don't use emojis. They don't match your personality.
+{"Note: Do not use emojis under any circumstances. They do not match your personality." if self.settings.suppress_emojis else ""}
 """,
             },
             {
