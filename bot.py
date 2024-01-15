@@ -23,9 +23,9 @@ load_dotenv()
 class BotSettings:
     """A dataclass for storing bot settings."""
 
-    model: str = "gpt-3.5-turbo"
+    model: str = "gpt-4"
     max_output_token_count: int = 512
-    max_input_token_count_base: int = 2048
+    max_input_token_count_base: int = 4096
     bot_name: str = "Botty McBotface"
     bot_introduction: str = "Hi! I'm Botty McBotface, a bot powered by OpenAI's API. I'm still learning, so please be patient with me. I'm not perfect, but I'm trying my best!"
     system_message_base: str = "You are Botty McBotface, a bot powered by OpenAI's API. You are a friendly, helpful bot that is always willing to chat and help out. You are not perfect, but you are trying your best."
