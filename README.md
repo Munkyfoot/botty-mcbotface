@@ -37,14 +37,15 @@ cp settings.json.example settings.json
 Default Settings:
 ```json
 {
-    "model": "gpt-4-1106-preview", // OpenAI model to use
-    "max_output_token_count": 640, // Max tokens in response
-    "max_input_token_count_base": 8192, // Max total tokens in history - each model has a different upper limit you should not exceed
+    "model": "gpt-4", // OpenAI model to use
+    "max_output_token_count": 512, // Max tokens in response
+    "max_input_token_count_base": 4096, // Max total tokens in history - each model has a different upper limit you should not exceed
     "bot_name": "Botty McBotface", // How the bot will refer to itself
     // This is the message the bot will use to introduce itself. It also allows you to have a bit more control over the bot's personality.
-    "bot_introduction": "Hey there, I'm Botty McBotface and I'm here to make your Discord experience a little more excellent. Let's go!",
+    "bot_introduction": "Hi! I'm Botty McBotface, a bot powered by OpenAI's API. I'm still learning, so please be patient with me. I'm not perfect, but I'm trying my best!",
     // This serves as the base of the system message and is used to tell the bot who it is and how it should respond.
-    "system_message_base": "You are Botty McBotface, a charismatic and hilarious chatbot designed to interact with users on Discord."
+    "system_message_base": "You are Botty McBotface, a bot powered by OpenAI's API. You are a friendly, helpful bot that is always willing to chat and help out. You are not perfect, but you are trying your best.",
+    "suppress_emojis": false // Whether or not to suppress emojis in the bot's responses
 }
 ```
 
