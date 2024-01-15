@@ -89,7 +89,7 @@ Important:
 You do not have access to these commands directly. If a user asks you to perform one of these commands, and you do not have access to an autonomous function with similar functionality, you should inform them that you can't perform the command directly and, instead, provide the command they can use to perform the action themselves.
 The autonomous functions you currently have access to are:
 search - Searches Wikipedia for a given query and returns the top results up to limit. You can use this autonomously when a user asks you to search for something.
-read - Reads a Wikipedia article from search results. You can use this autonomously when a user asks you to read an article.
+read_result - Reads a Wikipedia article from search results. You can use this autonomously when a user asks you to read an article.
 generate_image - Generates an image from a prompt using the DALL-E API. You can use this autonomously when a user asks you to generate an image.
 
 {"Note: Do not use emojis under any circumstances. They do not match your personality." if self.settings.suppress_emojis else ""}
@@ -122,14 +122,14 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                 },
             },
             {
-                "name": "read",
+                "name": "read_result",
                 "description": "Reads a Wikipedia article from search results.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "result_index": {
                             "type": "integer",
-                            "description": "The index of the result to read.",
+                            "description": "The index of the result to read. Remember to use 0-based indexing. (Result 1 = 0, Result 2 = 1, etc.)",
                         },
                     },
                 },
@@ -280,7 +280,7 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                     if response.choices[0].message.function_call is not None:
                         available_functions = {
                             "search": self.search,
-                            "read": self.read_result,
+                            "read_result": self.read_result,
                             "generate_image": self.generate_image,
                         }
 
@@ -570,6 +570,23 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                         await interaction.channel.send(
                             search_results_message, view=search_results_view
                         )
+
+                    if channel_key not in self.message_history:
+                        self.message_history[channel_key] = []
+
+                    self.message_history[channel_key].append(
+                        {
+                            "role": "assistant",
+                            "content": search_results_message
+                            + ",".join(
+                                [
+                                    f"\n\t{i+1}. {result['title']}: {result['description']}"
+                                    for i, result in enumerate(search_results)
+                                ]
+                            ),
+                        }
+                    )
+                    print(self.message_history[channel_key][-1])
                 except Exception as e:
                     print(
                         f'Experienced an error while sending search results for "{query}": {e}'
