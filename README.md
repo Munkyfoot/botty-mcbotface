@@ -20,7 +20,7 @@ This is an easily customizable Discord bot that uses OpenAI's APIs to generate t
 ## Setup
 1. Clone the repository.
 ```bash
-git clone <repo>
+git clone https://github.com/Munkyfoot/botty-mcbotface
 ```
 2. Install the required packages. A virtual environment is recommended, but not required.
 ```bash
