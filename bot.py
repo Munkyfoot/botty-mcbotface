@@ -178,12 +178,7 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
         return encoding.decode(tokens)
 
     def get_num_tokens(self, messages):
-        if (
-            self.model == "gpt-3.5-turbo-0301"
-            or self.model == "gpt-3.5-turbo-0613"
-            or self.model == "gpt-4-0613"
-            or self.model == "gpt-4-1106-preview"
-        ):
+        if "gpt-3.5-turbo" in self.model or "gpt-4" in self.model:
             num_tokens = 0
 
             for message in messages:
