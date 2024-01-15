@@ -217,6 +217,33 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
             print(f"Removed {removed_count} messages from history.")
             print(f"History Tokens: {history_token_count}")
 
+    def save_history(self, channel_key):
+        save_path = f"history/{channel_key}.json"
+
+        if not os.path.exists("history"):
+            os.makedirs("history")
+
+        with open(save_path, "w") as f:
+            json.dump(self.message_history[channel_key], f)
+
+    def load_all_history(self):
+        if not os.path.exists("history"):
+            os.makedirs("history")
+
+        for file in os.listdir("history"):
+            if file.endswith(".json"):
+                channel_key = file.split(".")[0]
+                with open(f"history/{file}", "r") as f:
+                    self.message_history[channel_key] = json.load(f)
+
+    def append_history(self, channel_key, message):
+        if channel_key not in self.message_history:
+            self.message_history[channel_key] = []
+
+        self.message_history[channel_key].append(message)
+        self.abridge_history(channel_key)
+        self.save_history(channel_key)
+
     def setup(self):
         """Sets the initial parameters."""
         self.init_token_count = self.get_num_tokens(self.prompt_messages)
@@ -233,6 +260,9 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
         print(f"Max Output Tokens: {self.max_output_token_count}")
         print(f"Max Input Tokens: {self.max_input_token_count}")
         print(f"Max History Tokens: {self.max_history_token_count}")
+
+        print("Loading history...")
+        self.load_all_history()
 
     def start(self):
         self.client.run(os.getenv("DISCORD_TOKEN"))
@@ -318,9 +348,7 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
             if text == "":
                 text = "I'm sorry, I'm having trouble connecting to the API right now. Please try again later."
 
-            self.message_history[channel_key].append(
-                {"role": "assistant", "content": text}
-            )
+            self.append_history(channel_key, {"role": "assistant", "content": text})
 
         if len(text) > 2000:
             text_chunks = text.split("\n\n")
@@ -440,11 +468,12 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                         < self.max_history_token_count // 2
                         and section.text != ""
                     ):
-                        self.message_history[channel_key].append(
+                        self.append_history(
+                            channel_key,
                             {
                                 "role": "system",
                                 "content": f'Here is the {section.title} section of a Wikipedia article about "{page.title}":\n\n{section.text}',
-                            }
+                            },
                         )
                     else:
                         continue
@@ -455,11 +484,12 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                             < self.max_history_token_count // 2
                             and subsection.text != ""
                         ):
-                            self.message_history[channel_key].append(
+                            self.append_history(
+                                channel_key,
                                 {
                                     "role": "system",
                                     "content": f'Here is the {subsection.title} subsection in the {section.title} section of a Wikipedia article about "{page.title}":\n\n{subsection.text}',
-                                }
+                                },
                             )
                         else:
                             continue
@@ -479,18 +509,20 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                         "Reading it now... I'll have a summary of the article in a few seconds!"
                     )
 
-                self.message_history[channel_key].append(
+                self.append_history(
+                    channel_key,
                     {
                         "role": "system",
                         "content": f'Here is the summary of a Wikipedia article about "{page.title}":\n\n{page.summary}',
-                    }
+                    },
                 )
 
-                self.message_history[channel_key].append(
+                self.append_history(
+                    channel_key,
                     {
                         "role": "system",
                         "content": f'Please summarize the Wikipedia article you were just provided with. Begin your response with "{page.title}...". After your summary, ask the user if they have any questions about the subject of the article.',
-                    }
+                    },
                 )
 
                 self.abridge_history(channel_key)
@@ -574,7 +606,8 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                     if channel_key not in self.message_history:
                         self.message_history[channel_key] = []
 
-                    self.message_history[channel_key].append(
+                    self.append_history(
+                        channel_key,
                         {
                             "role": "assistant",
                             "content": search_results_message
@@ -584,7 +617,7 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                                     for i, result in enumerate(search_results)
                                 ]
                             ),
-                        }
+                        },
                     )
                     print(self.message_history[channel_key][-1])
                 except Exception as e:
@@ -680,14 +713,16 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                 self.message_history[channel_key] = []
 
             if type(interaction) == discord.Interaction:
-                self.message_history[channel_key].append(
+                self.append_history(
+                    channel_key,
                     {
                         "role": "system",
                         "content": f'{user_name} has generated an image from the prompt "{prompt}".',
-                    }
+                    },
                 )
             else:
-                self.message_history[channel_key].append(
+                self.append_history(
+                    channel_key,
                     {
                         "role": "system",
                         "content": f'An image has been generated from the prompt "{prompt}". Follow up with a comment about the image.',
@@ -764,18 +799,15 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
 
         print(f"Query Key: {channel_key}")
 
-        if channel_key not in self.message_history:
-            self.message_history[channel_key] = []
-
-        self.message_history[channel_key].append(
-            {"role": "user", "content": f"{query}", "name": f"{user_name}"}
+        self.append_history(
+            channel_key, {"role": "user", "content": f"{query}", "name": f"{user_name}"}
         )
         time_message = {
             "role": "system",
             "content": f"The current date/time is {(message.created_at + timedelta(hours=-8)).strftime('%I:%M %p on %B %d, %Y')}. The local timezone is US/Pacific.",
         }
         print(f"Time Message: {time_message}")
-        self.message_history[channel_key].append(time_message)
+        self.append_history(channel_key, time_message)
         self.abridge_history(channel_key)
 
         if channel_key not in self.sleeping:
