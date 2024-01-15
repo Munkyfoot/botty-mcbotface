@@ -16,8 +16,9 @@ class WikiAPI:
         self.view_base_url = "https://en.wikipedia.org/wiki/"
         self.lang = "en"
         self.headers = {
-            "User-Agent": os.getenv("WIKIPEDIA_USER_AGENT"),
+            "User-Agent": f"{os.getenv('WIKIPEDIA_USER_AGENT_NAME')}/{os.getenv('WIKIPEDIA_USER_AGENT_VERSION')} ({os.getenv('WIKIPEDIA_USER_AGENT_EMAIL')})",
         }
+        print(self.headers)
         self.wiki = wikipediaapi.Wikipedia(self.lang, headers=self.headers)
 
     def search(self, query: str, limit: int = 10) -> dict:
