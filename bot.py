@@ -400,6 +400,7 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
 
         self.message_history[channel_key] = []
         self.search_results[channel_key] = []
+        self.save_history(channel_key)
         await interaction.response.send_message("I've forgotten everything.")
 
     async def read_result(self, interaction: discord.Interaction, result_index: int):
