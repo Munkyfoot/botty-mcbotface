@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 from dataclasses import dataclass
 from datetime import timedelta
 from io import BytesIO
@@ -366,7 +367,10 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
             print(error_message)
         print("")
 
-        if channel_key in self.message_buffer and len(self.message_buffer[channel_key]) > 0:
+        if (
+            channel_key in self.message_buffer
+            and len(self.message_buffer[channel_key]) > 0
+        ):
             next_message = self.message_buffer[channel_key].pop(0)
             print(f"Next Message: {next_message}")
             asyncio.create_task(self.handle_on_message(next_message, True))
@@ -797,13 +801,20 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
 
         print(f"Query Key: {channel_key}")
 
-        if channel_key in self.message_history and self.message_history[channel_key][-1]["role"] != "assistant" and not force:
+        if (
+            channel_key in self.message_history
+            and self.message_history[channel_key][-1]["role"] != "assistant"
+            and not force
+        ):
             if channel_key not in self.message_buffer:
                 self.message_buffer[channel_key] = []
 
             self.message_buffer[channel_key].append(message)
             print(f"Buffering message: {self.message_buffer[channel_key][-1]}")
             return
+
+        # user_name must match '^[a-zA-Z0-9_-]{1,64}$' - Replace invalid characters with underscores
+        user_name = re.sub(r"[^a-zA-Z0-9_-]", "_", user_name)
 
         self.append_history(
             channel_key, {"role": "user", "content": f"{query}", "name": f"{user_name}"}
