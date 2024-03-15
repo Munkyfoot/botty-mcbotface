@@ -75,6 +75,7 @@ class BotGPT:
         self.message_buffer = {}
         self.sleeping = {}
         self.search_results = {}
+        self.random_tasks = {}
 
         self.dm_whitelist = os.getenv("DM_WHITELIST").split(",")
 
@@ -795,6 +796,28 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                 "Something went wrong while generating the image. Please try again later."
             )
 
+    async def random_message(self, channel_key, ctx, recursive=True):
+        """Sends a random message to a channel."""
+        try:
+            await asyncio.sleep(random.randint(30, 60))
+
+            self.append_history(
+                channel_key,
+                {
+                    "role": "system",
+                    "content": f"There hasn't been a message in a while. Reach out by sharing your thoughts or generating an image. You can address a user directly, or address the entire channel.",
+                },
+            )
+
+            await self.generate_response(channel_key, ctx)
+
+            if recursive:
+                self.random_tasks[channel_key] = asyncio.create_task(
+                    self.random_message(channel_key, ctx)
+                )
+        except asyncio.CancelledError:
+            print("Random message task cancelled.")
+
     def get_channel_key(
         self,
         channel: discord.TextChannel | discord.DMChannel,
@@ -859,6 +882,7 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
 
         if (
             channel_key in self.message_history
+            and len(self.message_history[channel_key]) > 0
             and self.message_history[channel_key][-1]["role"] != "assistant"
             and not force
         ):
@@ -893,6 +917,13 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
         elif self.sleeping[channel_key]:
             print("Still sleeping...")
             return
+
+        if channel_key in self.random_tasks:
+            self.random_tasks[channel_key].cancel()
+
+        self.random_tasks[channel_key] = asyncio.create_task(
+            self.random_message(channel_key, message)
+        )
 
         print("Responding to message...")
 
