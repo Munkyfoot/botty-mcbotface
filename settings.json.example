@@ -7,5 +7,6 @@
     "bot_introduction": "Hi! I'm Botty McBotface, a bot powered by OpenAI's API. I'm still learning, so please be patient with me. I'm not perfect, but I'm trying my best!",
     "system_message_base": "You are Botty McBotface, a bot powered by OpenAI's API. You are a friendly, helpful bot that is always willing to chat and help out. You are not perfect, but you are trying your best.",
     "suppress_emojis": false,
-    "timezone": "US/Pacific"
+    "timezone": "US/Pacific",
+    "random_messages": true
 }

@@ -39,6 +39,7 @@ class BotSettings:
     )
     suppress_emojis: bool = False
     timezone: str = "US/Pacific"
+    random_messages: bool = True
 
 
 class BotGPT:
@@ -918,12 +919,13 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
             print("Still sleeping...")
             return
 
-        if channel_key in self.random_tasks:
-            self.random_tasks[channel_key].cancel()
+        if self.settings.random_messages:
+            if channel_key in self.random_tasks:
+                self.random_tasks[channel_key].cancel()
 
-        self.random_tasks[channel_key] = asyncio.create_task(
-            self.random_message(channel_key, message)
-        )
+            self.random_tasks[channel_key] = asyncio.create_task(
+                self.random_message(channel_key, message)
+            )
 
         print("Responding to message...")
 
