@@ -24,12 +24,17 @@ load_dotenv()
 class BotSettings:
     """A dataclass for storing bot settings."""
 
-    model: str = "gpt-4"
+    model: str = "gpt-4-turbo-preview"
+    vision_model: str = "gpt-4-vision-preview"
     max_output_token_count: int = 512
     max_input_token_count_base: int = 4096
     bot_name: str = "Botty McBotface"
-    bot_introduction: str = "Hi! I'm Botty McBotface, a bot powered by OpenAI's API. I'm still learning, so please be patient with me. I'm not perfect, but I'm trying my best!"
-    system_message_base: str = "You are Botty McBotface, a bot powered by OpenAI's API. You are a friendly, helpful bot that is always willing to chat and help out. You are not perfect, but you are trying your best."
+    bot_introduction: str = (
+        "Hi! I'm Botty McBotface, a bot powered by OpenAI's API. I'm still learning, so please be patient with me. I'm not perfect, but I'm trying my best!"
+    )
+    system_message_base: str = (
+        "You are Botty McBotface, a bot powered by OpenAI's API. You are a friendly, helpful bot that is always willing to chat and help out. You are not perfect, but you are trying your best."
+    )
     suppress_emojis: bool = False
 
 
@@ -666,7 +671,7 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
         wide: bool = False,
         realism: bool = False,
     ):
-        """Generates an image from a prompt using the GPT-3 API."""
+        """Generates an image from a prompt using the DALL-E 3 API."""
         try:
             if type(interaction) == discord.Interaction:
                 await interaction.response.defer(thinking=True)
@@ -731,8 +736,56 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                     },
                 )
 
-            self.abridge_history(channel_key)
-            asyncio.create_task(self.generate_response(channel_key, interaction, False))
+            async with interaction.channel.typing():
+                vision_messages = self.prompt_messages + [
+                    {
+                        "role": "system",
+                        "content": f'In a separate thread, {user_name} requested you to generate an image from the prompt "{prompt}".',
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"What do you think?",
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{image_data}"
+                                },
+                            },
+                        ],
+                        "name": f"{user_name}",
+                    },
+                ]
+                try:
+                    vision_response = await self.openai_api.chat.completions.create(
+                        model=self.settings.vision_model,
+                        messages=vision_messages,
+                        max_tokens=512,
+                        temperature=0.7,
+                        top_p=1,
+                        frequency_penalty=0.4,
+                        presence_penalty=0.6,
+                        user=self.settings.bot_name,
+                    )
+
+                    vision_text = vision_response.choices[0].message.content.strip()
+                except Exception as e:
+                    print(f"Experienced an error while generating vision text: {e}")
+                    vision_text = "Something went wrong with my vision, so I can't see it. I'm sure it's amazing though."
+
+                self.append_history(
+                    channel_key, {"role": "assistant", "content": vision_text}
+                )
+                self.abridge_history(channel_key)
+
+                if type(interaction) == discord.Interaction:
+                    await interaction.followup.send(vision_text)
+                else:
+                    await interaction.channel.send(vision_text)
+
         except Exception as e:
             print(f"Experienced an error while generating image: {e}")
             await interaction.response.send_message(
