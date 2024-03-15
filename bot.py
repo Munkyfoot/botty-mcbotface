@@ -4,9 +4,11 @@ import asyncio
 import base64
 import json
 import os
+import random
 import re
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime
+import pytz
 from io import BytesIO
 
 import discord
@@ -36,6 +38,7 @@ class BotSettings:
         "You are Botty McBotface, a bot powered by OpenAI's API. You are a friendly, helpful bot that is always willing to chat and help out. You are not perfect, but you are trying your best."
     )
     suppress_emojis: bool = False
+    timezone: str = "US/Pacific"
 
 
 class BotGPT:
@@ -874,7 +877,7 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
         )
         time_message = {
             "role": "system",
-            "content": f"The current date/time is {(message.created_at + timedelta(hours=-8)).strftime('%I:%M %p on %B %d, %Y')}. The local timezone is US/Pacific.",
+            "content": f"The current date/time is {(message.created_at.astimezone(pytz.timezone(self.settings.timezone))).strftime('%I:%M %p on %B %d, %Y')}. The server timezone is {self.settings.timezone}.",
         }
         print(f"Time Message: {time_message}")
         self.append_history(channel_key, time_message)
