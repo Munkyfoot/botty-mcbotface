@@ -799,7 +799,7 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
     async def random_message(self, channel_key, ctx, recursive=True):
         """Sends a random message to a channel."""
         try:
-            await asyncio.sleep(random.randint(30, 60))
+            await asyncio.sleep(random.randint(3600, 86400))
 
             self.append_history(
                 channel_key,
