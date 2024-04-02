@@ -72,3 +72,6 @@ In the future, commands will be more customizable. For now, here are the built-i
 - `/sleep` - Puts the bot to sleep.
 - `/wake` - Wakes the bot up.
 - `/help` - Shows the available commands.
+
+# Disclaimer
+This project is a scrappy, work-in-progress bot that I am building for fun. Use at your own risk.
