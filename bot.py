@@ -42,6 +42,14 @@ class BotSettings:
     random_messages: bool = True
 
 
+@dataclass
+class ChannelInfo:
+    """A dataclass for storing channel information."""
+
+    channel: discord.TextChannel | discord.DMChannel
+    channel_key: str
+
+
 class BotGPT:
     def __init__(self):
         self.intents = discord.Intents.default()
@@ -282,7 +290,7 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
     async def generate_response(
         self,
         channel_key: str,
-        ctx: discord.Interaction | discord.Message,
+        channel: discord.TextChannel | discord.DMChannel,
         functions_enabled: bool = True,
     ):
         """Generates a response to a message using the GPT-3 API."""
@@ -297,7 +305,7 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
 
         error_message = ""
 
-        async with ctx.channel.typing():
+        async with channel.typing():
             while attempts < 3:
                 try:
                     attempts += 1
@@ -330,7 +338,7 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                         function_args = json.loads(
                             response.choices[0].message.function_call.arguments
                         )
-                        function_args["interaction"] = ctx
+                        function_args["info"] = ChannelInfo(channel, channel_key)
                         function = available_functions[function_name]
 
                         await function(**function_args)
@@ -366,10 +374,10 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
             text_chunks = text.split("\n\n")
             first_half = "\n\n".join(text_chunks[: len(text_chunks) // 2])
             second_half = "\n\n".join(text_chunks[len(text_chunks) // 2 :])
-            await ctx.channel.send(first_half)
-            await ctx.channel.send(second_half)
+            await channel.send(first_half)
+            await channel.send(second_half)
         else:
-            await ctx.channel.send(text)
+            await channel.send(text)
 
         print(usage_message)
         print(f"Completed in {attempts} attempt(s).")
@@ -423,25 +431,21 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
         self.save_history(channel_key)
         await interaction.response.send_message("I've forgotten everything.")
 
-    async def read_result(self, interaction: discord.Interaction, result_index: int):
+    async def read_result(
+        self, info: discord.Interaction | ChannelInfo, result_index: int
+    ):
         try:
-            if type(interaction) == discord.Interaction:
-                channel_key = self.get_channel_key(
-                    interaction.channel, interaction.user, interaction.guild
-                )
+            if type(info) == discord.Interaction:
+                channel_key = self.get_channel_key(info.channel, info.user, info.guild)
             else:
-                channel_key = self.get_channel_key(
-                    interaction.channel, interaction.author, interaction.guild
-                )
+                channel_key = info.channel_key
         except:
-            if type(interaction) == discord.Interaction:
-                await interaction.response.send_message(
+            if type(info) == discord.Interaction:
+                await info.response.send_message(
                     "I can't read an article in this channel."
                 )
             else:
-                await interaction.channel.send(
-                    "I can't read an article in this channel."
-                )
+                await info.channel.send("I can't read an article in this channel.")
             return
 
         if channel_key not in self.search_results:
@@ -451,12 +455,12 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
             search_results = self.search_results[channel_key]
 
             if result_index < 0 or result_index >= len(search_results):
-                if type(interaction) == discord.Interaction:
-                    await interaction.response.send_message(
+                if type(info) == discord.Interaction:
+                    await info.response.send_message(
                         "I don't have a result with that index."
                     )
                 else:
-                    await interaction.channel.send(
+                    await info.channel.send(
                         "Looks like I tried to read an article that doesn't exist. We might need to run another search."
                     )
                 return
@@ -512,18 +516,18 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                         else:
                             continue
 
-                if type(interaction) == discord.Interaction:
-                    await interaction.response.send_message(
+                if type(info) == discord.Interaction:
+                    await info.response.send_message(
                         f"Here's the article: {self.wiki.get_view_url(result_key)}"
                     )
-                    await interaction.followup.send(
+                    await info.followup.send(
                         "Reading it now... I'll have a summary of the article in a few seconds!"
                     )
                 else:
-                    await interaction.channel.send(
+                    await info.channel.send(
                         f"Here's the article: {self.wiki.get_view_url(result_key)}"
                     )
-                    await interaction.channel.send(
+                    await info.channel.send(
                         "Reading it now... I'll have a summary of the article in a few seconds!"
                     )
 
@@ -545,29 +549,29 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
 
                 self.abridge_history(channel_key)
                 asyncio.create_task(
-                    self.generate_response(channel_key, interaction, False)
+                    self.generate_response(channel_key, info.channel, False)
                 )
             except Exception as e:
                 print(f"Experienced an error while getting the page: {e}")
-                if type(interaction) == discord.Interaction:
-                    await interaction.response.send_message(
+                if type(info) == discord.Interaction:
+                    await info.response.send_message(
                         "Something went wrong while getting the page. Please try again later."
                     )
                 else:
-                    await interaction.channel.send(
+                    await info.channel.send(
                         "Something went wrong while getting the page. Please try again later."
                     )
         else:
-            if type(interaction) == discord.Interaction:
-                await interaction.response.send_message(
+            if type(info) == discord.Interaction:
+                await info.response.send_message(
                     "You need to search for something first."
                 )
             else:
-                await interaction.channel.send("What do you want me to read again?")
+                await info.channel.send("What do you want me to read again?")
 
     async def search(
         self,
-        interaction: discord.Interaction | discord.Message,
+        info: discord.Interaction | ChannelInfo,
         query: str,
         limit: int = 5,
     ):
@@ -579,14 +583,10 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                 print(f'Experienced an error while searching for "{query}": {e}')
                 search_results = []
 
-            if type(interaction) == discord.Interaction:
-                channel_key = self.get_channel_key(
-                    interaction.channel, interaction.user, interaction.guild
-                )
+            if type(info) == discord.Interaction:
+                channel_key = self.get_channel_key(info.channel, info.user, info.guild)
             else:
-                channel_key = self.get_channel_key(
-                    interaction.channel, interaction.author, interaction.guild
-                )
+                channel_key = info.channel_key
 
             if len(search_results) > 0:
                 try:
@@ -612,12 +612,12 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
 
                         search_results_view.add_item(result_button)
 
-                    if type(interaction) == discord.Interaction:
-                        await interaction.response.send_message(
+                    if type(info) == discord.Interaction:
+                        await info.response.send_message(
                             search_results_message, view=search_results_view
                         )
                     else:
-                        await interaction.channel.send(
+                        await info.channel.send(
                             search_results_message, view=search_results_view
                         )
 
@@ -639,38 +639,34 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                     print(
                         f'Experienced an error while sending search results for "{query}": {e}'
                     )
-                    if type(interaction) == discord.Interaction:
-                        await interaction.response.send_message(
+                    if type(info) == discord.Interaction:
+                        await info.response.send_message(
                             f'Something went wrong while searching for "{query}". Please try again later.'
                         )
                     else:
-                        await interaction.channel.send(
+                        await info.channel.send(
                             f'Something went wrong while searching for "{query}". Please try again later.'
                         )
 
             else:
                 print("No search results found.")
-                if type(interaction) == discord.Interaction:
-                    await interaction.response.send_message(
+                if type(info) == discord.Interaction:
+                    await info.response.send_message(
                         f'Sorry, I couldn\'t find any results for "{query}".'
                     )
                 else:
-                    await interaction.channel.send(
+                    await info.channel.send(
                         f'Sorry, I couldn\'t find any results for "{query}".'
                     )
         else:
-            if type(interaction) == discord.Interaction:
-                await interaction.response.send_message(
-                    "You need to include a search query."
-                )
+            if type(info) == discord.Interaction:
+                await info.response.send_message("You need to include a search query.")
             else:
-                await interaction.channel.send(
-                    "What do you want me to search for again?"
-                )
+                await info.channel.send("What do you want me to search for again?")
 
     async def generate_image(
         self,
-        interaction: discord.Interaction | discord.Message,
+        info: discord.Interaction | ChannelInfo,
         prompt: str,
         detailed: bool = False,
         wide: bool = False,
@@ -678,8 +674,8 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
     ):
         """Generates an image from a prompt using the DALL-E 3 API."""
         try:
-            if type(interaction) == discord.Interaction:
-                await interaction.response.defer(thinking=True)
+            if type(info) == discord.Interaction:
+                await info.response.defer(thinking=True)
 
             print(
                 f'Generating "{prompt}"... (detailed={detailed}, wide={wide}, realism={realism})'
@@ -700,36 +696,22 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
             binary_data = base64.b64decode(image_data)
             image = BytesIO(binary_data)
 
-            if type(interaction) == discord.Interaction:
-                await interaction.followup.send(
-                    file=discord.File(image, filename="image.png")
-                )
+            if type(info) == discord.Interaction:
+                await info.followup.send(file=discord.File(image, filename="image.png"))
             else:
-                await interaction.channel.send(
-                    file=discord.File(image, filename="image.png")
-                )
+                await info.channel.send(file=discord.File(image, filename="image.png"))
 
-            user_name = str(
-                interaction.user
-                if type(interaction) == discord.Interaction
-                else interaction.author
-            )
-
-            if type(interaction) == discord.Interaction:
-                channel_key = self.get_channel_key(
-                    interaction.channel, interaction.user, interaction.guild
-                )
+            if type(info) == discord.Interaction:
+                channel_key = self.get_channel_key(info.channel, info.user, info.guild)
             else:
-                channel_key = self.get_channel_key(
-                    interaction.channel, interaction.author, interaction.guild
-                )
+                channel_key = info.channel_key
 
-            if type(interaction) == discord.Interaction:
+            if type(info) == discord.Interaction:
                 self.append_history(
                     channel_key,
                     {
                         "role": "system",
-                        "content": f'{user_name} has generated an image from the prompt "{prompt}".',
+                        "content": f'{info.user} has generated an image from the prompt "{prompt}".',
                     },
                 )
             else:
@@ -741,11 +723,11 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                     },
                 )
 
-            async with interaction.channel.typing():
+            async with info.channel.typing():
                 vision_messages = self.prompt_messages + [
                     {
                         "role": "system",
-                        "content": f'In a separate thread, {user_name} requested you to generate an image from the prompt "{prompt}".',
+                        "content": f'In a separate thread, you were requested to generate an image from the prompt "{prompt}".',
                     },
                     {
                         "role": "user",
@@ -761,7 +743,6 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                                 },
                             },
                         ],
-                        "name": f"{user_name}",
                     },
                 ]
                 try:
@@ -786,18 +767,23 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                 )
                 self.abridge_history(channel_key)
 
-                if type(interaction) == discord.Interaction:
-                    await interaction.followup.send(vision_text)
+                if type(info) == discord.Interaction:
+                    await info.followup.send(vision_text)
                 else:
-                    await interaction.channel.send(vision_text)
+                    await info.channel.send(vision_text)
 
         except Exception as e:
             print(f"Experienced an error while generating image: {e}")
-            await interaction.response.send_message(
+            await info.response.send_message(
                 "Something went wrong while generating the image. Please try again later."
             )
 
-    async def random_message(self, channel_key, ctx, recursive=True):
+    async def random_message(
+        self,
+        channel_key: str,
+        channel: discord.TextChannel | discord.DMChannel,
+        recursive=True,
+    ):
         """Sends a random message to a channel."""
         try:
             await asyncio.sleep(random.randint(3600, 86400))
@@ -810,11 +796,11 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                 },
             )
 
-            await self.generate_response(channel_key, ctx)
+            await self.generate_response(channel_key, channel)
 
             if recursive:
                 self.random_tasks[channel_key] = asyncio.create_task(
-                    self.random_message(channel_key, ctx)
+                    self.random_message(channel_key, channel)
                 )
         except asyncio.CancelledError:
             print("Random message task cancelled.")
@@ -924,12 +910,12 @@ generate_image - Generates an image from a prompt using the DALL-E API. You can 
                 self.random_tasks[channel_key].cancel()
 
             self.random_tasks[channel_key] = asyncio.create_task(
-                self.random_message(channel_key, message)
+                self.random_message(channel_key, message.channel)
             )
 
         print("Responding to message...")
 
-        asyncio.create_task(self.generate_response(channel_key, message))
+        asyncio.create_task(self.generate_response(channel_key, message.channel))
 
 
 if __name__ == "__main__":
